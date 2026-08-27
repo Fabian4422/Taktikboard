@@ -308,16 +308,22 @@ export function FieldCanvas({
                   fillLinearGradientEndPoint={{ x: FIELD_WIDTH, y: FIELD_HEIGHT }}
                   fillLinearGradientColorStops={[0, "#2d8a4e", 0.5, "#358f55", 1, "#2d8a4e"]}
                 />
+                {/* Abwechselnde hell-/dunkelgrüne Rasenstreifen für Tiefe */}
                 {showsFieldStripes(fieldView) &&
-                  Array.from({ length: 10 }).map((_, i) => (
-                    <Line
-                      key={`stripe-${i}`}
-                      points={[FIELD_WIDTH * (i / 10), 0, FIELD_WIDTH * (i / 10), FIELD_HEIGHT]}
-                      stroke={i % 2 === 0 ? "rgba(0,0,0,0.04)" : "rgba(255,255,255,0.03)"}
-                      strokeWidth={FIELD_WIDTH / 10}
-                      listening={false}
-                    />
-                  ))}
+                  Array.from({ length: 10 }).map((_, i) => {
+                    const stripeW = FIELD_WIDTH / 10;
+                    return (
+                      <Rect
+                        key={`stripe-${i}`}
+                        x={stripeW * i}
+                        y={0}
+                        width={stripeW}
+                        height={FIELD_HEIGHT}
+                        fill={i % 2 === 0 ? "#2f914f" : "#277a43"}
+                        listening={false}
+                      />
+                    );
+                  })}
                 {showsFieldLines(fieldView) && <FootballFieldLines />}
 
                 {elements.map((el) => (

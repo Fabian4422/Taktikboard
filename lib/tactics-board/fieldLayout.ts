@@ -127,9 +127,9 @@ export function showsFieldLines(view: FieldView): boolean {
   return view !== "free" && view !== "half-blank";
 }
 
-/** Rasenstreifen nur bei blanken Halbfeld-Ansichten ausblenden – ruhigere Fläche. */
-export function showsFieldStripes(view: FieldView): boolean {
-  return view !== "half-blank";
+/** Rasenstreifen auf allen Ansichten – auch Halbfeld blank (Tiefe ohne Feldlinien). */
+export function showsFieldStripes(_view: FieldView): boolean {
+  return true;
 }
 
 export function getEffectiveRotation(view: FieldView, userRotation: FieldRotation): FieldRotation {
