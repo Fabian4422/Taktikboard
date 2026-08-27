@@ -5,7 +5,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type Konva from "konva";
 import { BoardElementShape } from "./BoardElementShape";
 import type { BoardElement, FieldRotation, FieldView, ToolMode } from "@/lib/tactics-board/types";
-import { FIELD_HEIGHT, FIELD_WIDTH } from "@/lib/tactics-board/types";
+import { DISPLAY_ASPECT_RATIO, FIELD_HEIGHT, FIELD_WIDTH } from "@/lib/tactics-board/types";
 import {
   getEffectiveRotation,
   getFieldLayout,
@@ -32,7 +32,7 @@ interface FieldCanvasProps {
   onFieldClick: (x: number, y: number) => void;
   onElementTransform?: (id: string, x: number, y: number, rotation: number) => void;
   stageRef?: React.RefObject<Konva.Stage | null>;
-  /** Spielfeld in die verfügbare Höhe/Breite einpassen (Vollbild) */
+  /** 16:9-Rahmen in die verfügbare Fläche einpassen (Vollbild / Export) */
   fillParent?: boolean;
   /** Keine Auswahl/Bearbeitung (Vorschau / Export) */
   preview?: boolean;
@@ -236,12 +236,28 @@ export function FieldCanvas({
   const viewport = getFieldViewport(fieldView);
   const rotation = getEffectiveRotation(fieldView, fieldRotation);
   const rotated = getRotatedViewportSize(viewport, rotation);
-  const scale =
-    fillParent && containerH > 0
-      ? Math.min(containerW / rotated.w, containerH / rotated.h)
-      : containerW / rotated.w;
-  const stageW = fillParent && containerH > 0 ? rotated.w * scale : containerW;
-  const stageH = rotated.h * scale;
+
+  // Fester 16:9-Rahmen; Spielfeld füllt diesen per Cover (ohne leere Ränder).
+  let stageW: number;
+  let stageH: number;
+  if (fillParent && containerH > 0) {
+    if (containerW / containerH > DISPLAY_ASPECT_RATIO) {
+      stageH = containerH;
+      stageW = containerH * DISPLAY_ASPECT_RATIO;
+    } else {
+      stageW = containerW;
+      stageH = containerW / DISPLAY_ASPECT_RATIO;
+    }
+  } else {
+    stageW = containerW;
+    stageH = containerW / DISPLAY_ASPECT_RATIO;
+  }
+
+  const scale = Math.max(stageW / Math.max(rotated.w, 1), stageH / Math.max(rotated.h, 1));
+  const logicalW = stageW / scale;
+  const logicalH = stageH / scale;
+  const contentOffsetX = (logicalW - rotated.w) / 2;
+  const contentOffsetY = (logicalH - rotated.h) / 2;
 
   const handleStageClick = (e: {
     target: {
@@ -287,64 +303,66 @@ export function FieldCanvas({
           style={{ cursor: preview ? "default" : toolMode !== "select" && !isPlaying ? "crosshair" : "default" }}
         >
           <Layer listening={!preview}>
-            <Group
-              x={rotated.w / 2}
-              y={rotated.h / 2}
-              offsetX={viewport.w / 2}
-              offsetY={viewport.h / 2}
-              rotation={rotation}
-              clipX={0}
-              clipY={0}
-              clipWidth={viewport.w}
-              clipHeight={viewport.h}
-            >
-              <Group ref={fieldGroupRef} x={-viewport.x} y={-viewport.y}>
-                <Rect
-                  x={0}
-                  y={0}
-                  width={FIELD_WIDTH}
-                  height={FIELD_HEIGHT}
-                  fillLinearGradientStartPoint={{ x: 0, y: 0 }}
-                  fillLinearGradientEndPoint={{ x: FIELD_WIDTH, y: FIELD_HEIGHT }}
-                  fillLinearGradientColorStops={[0, "#2d8a4e", 0.5, "#358f55", 1, "#2d8a4e"]}
-                />
-                {/* Abwechselnde hell-/dunkelgrüne Rasenstreifen für Tiefe */}
-                {showsFieldStripes(fieldView) &&
-                  Array.from({ length: 10 }).map((_, i) => {
-                    const stripeW = FIELD_WIDTH / 10;
-                    return (
-                      <Rect
-                        key={`stripe-${i}`}
-                        x={stripeW * i}
-                        y={0}
-                        width={stripeW}
-                        height={FIELD_HEIGHT}
-                        fill={i % 2 === 0 ? "#2f914f" : "#277a43"}
-                        listening={false}
-                      />
-                    );
-                  })}
-                {showsFieldLines(fieldView) && <FootballFieldLines />}
-
-                {elements.map((el) => (
-                  <BoardElementShape
-                    key={el.id}
-                    element={el}
-                    selected={!preview && el.id === selectedId}
-                    draggable={!preview && !isPlaying && toolMode === "select"}
-                    labelCounterRotation={rotation}
-                    onSelect={() => onSelect(el.id)}
-                    onDragEnd={(x, y) => onElementMove(el.id, x, y)}
-                    onLineDragEnd={(dx, dy) => onLineMove(el.id, dx, dy)}
-                    onTransformEnd={(x, y, rotationDeg) =>
-                      onElementTransform?.(el.id, x, y, rotationDeg)
-                    }
+            <Group x={contentOffsetX} y={contentOffsetY}>
+              <Group
+                x={rotated.w / 2}
+                y={rotated.h / 2}
+                offsetX={viewport.w / 2}
+                offsetY={viewport.h / 2}
+                rotation={rotation}
+                clipX={0}
+                clipY={0}
+                clipWidth={viewport.w}
+                clipHeight={viewport.h}
+              >
+                <Group ref={fieldGroupRef} x={-viewport.x} y={-viewport.y}>
+                  <Rect
+                    x={0}
+                    y={0}
+                    width={FIELD_WIDTH}
+                    height={FIELD_HEIGHT}
+                    fillLinearGradientStartPoint={{ x: 0, y: 0 }}
+                    fillLinearGradientEndPoint={{ x: FIELD_WIDTH, y: FIELD_HEIGHT }}
+                    fillLinearGradientColorStops={[0, "#2d8a4e", 0.5, "#358f55", 1, "#2d8a4e"]}
                   />
-                ))}
+                  {/* Abwechselnde hell-/dunkelgrüne Rasenstreifen für Tiefe */}
+                  {showsFieldStripes(fieldView) &&
+                    Array.from({ length: 10 }).map((_, i) => {
+                      const stripeW = FIELD_WIDTH / 10;
+                      return (
+                        <Rect
+                          key={`stripe-${i}`}
+                          x={stripeW * i}
+                          y={0}
+                          width={stripeW}
+                          height={FIELD_HEIGHT}
+                          fill={i % 2 === 0 ? "#2f914f" : "#277a43"}
+                          listening={false}
+                        />
+                      );
+                    })}
+                  {showsFieldLines(fieldView) && <FootballFieldLines />}
 
-                {lineDraft && (
-                  <Circle x={lineDraft.x} y={lineDraft.y} radius={6} fill="#38bdf8" opacity={0.8} />
-                )}
+                  {elements.map((el) => (
+                    <BoardElementShape
+                      key={el.id}
+                      element={el}
+                      selected={!preview && el.id === selectedId}
+                      draggable={!preview && !isPlaying && toolMode === "select"}
+                      labelCounterRotation={rotation}
+                      onSelect={() => onSelect(el.id)}
+                      onDragEnd={(x, y) => onElementMove(el.id, x, y)}
+                      onLineDragEnd={(dx, dy) => onLineMove(el.id, dx, dy)}
+                      onTransformEnd={(x, y, rotationDeg) =>
+                        onElementTransform?.(el.id, x, y, rotationDeg)
+                      }
+                    />
+                  ))}
+
+                  {lineDraft && (
+                    <Circle x={lineDraft.x} y={lineDraft.y} radius={6} fill="#38bdf8" opacity={0.8} />
+                  )}
+                </Group>
               </Group>
             </Group>
           </Layer>

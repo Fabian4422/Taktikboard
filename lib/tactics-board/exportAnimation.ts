@@ -4,6 +4,10 @@ import {
   cloneElements,
   getPlaybackPlan,
   interpolateElementsTimed,
+  EXPORT_GIF_HEIGHT,
+  EXPORT_GIF_WIDTH,
+  EXPORT_VIDEO_HEIGHT,
+  EXPORT_VIDEO_WIDTH,
   type BoardElement,
   type Keyframe,
 } from "./types";
@@ -12,9 +16,9 @@ export const VIDEO_EXPORT_FPS = 30;
 export const GIF_EXPORT_FPS = 30;
 export const EXPORT_FPS = VIDEO_EXPORT_FPS;
 const HOLD_LAST_FRAME_MS = 400;
-const VIDEO_MAX_WIDTH = 1280;
-const GIF_MAX_WIDTH = 720;
 const WEBP_QUALITY = 0.92;
+
+export { EXPORT_VIDEO_WIDTH, EXPORT_VIDEO_HEIGHT, EXPORT_GIF_WIDTH, EXPORT_GIF_HEIGHT };
 
 export type ExportFormat = "video" | "gif";
 
@@ -81,11 +85,15 @@ function even(n: number): number {
   return Math.max(2, n - (n % 2));
 }
 
-export function fitEvenCanvas(source: HTMLCanvasElement, maxWidth: number): HTMLCanvasElement {
-  const scale = Math.min(1, maxWidth / Math.max(source.width, 1));
-  const width = even(Math.round(source.width * scale));
-  const height = even(Math.round(source.height * scale));
-  if (width === source.width && height === source.height) {
+/** Skaliert Cover in exakte 16:9-Zielgröße (gerade Pixel für Encoder). */
+export function fitExactCanvas(
+  source: HTMLCanvasElement,
+  targetWidth: number,
+  targetHeight: number,
+): HTMLCanvasElement {
+  const width = even(targetWidth);
+  const height = even(targetHeight);
+  if (source.width === width && source.height === height) {
     return source;
   }
   const out = document.createElement("canvas");
@@ -95,11 +103,30 @@ export function fitEvenCanvas(source: HTMLCanvasElement, maxWidth: number): HTML
   if (!ctx) return source;
   ctx.imageSmoothingEnabled = true;
   ctx.imageSmoothingQuality = "high";
-  ctx.drawImage(source, 0, 0, width, height);
+  ctx.fillStyle = "#166534";
+  ctx.fillRect(0, 0, width, height);
+  const scale = Math.max(width / Math.max(source.width, 1), height / Math.max(source.height, 1));
+  const dw = source.width * scale;
+  const dh = source.height * scale;
+  const dx = (width - dw) / 2;
+  const dy = (height - dh) / 2;
+  ctx.drawImage(source, dx, dy, dw, dh);
   return out;
 }
 
-export function captureStageFrame(stage: StageCapture, maxWidth: number): HTMLCanvasElement {
+/** @deprecated Prefer fitExactCanvas — behält Kompatibilität für max-width Downscale. */
+export function fitEvenCanvas(source: HTMLCanvasElement, maxWidth: number): HTMLCanvasElement {
+  const scale = Math.min(1, maxWidth / Math.max(source.width, 1));
+  const width = even(Math.round(source.width * scale));
+  const height = even(Math.round(source.height * scale));
+  return fitExactCanvas(source, width, height);
+}
+
+export function captureStageFrame(
+  stage: StageCapture,
+  targetWidth: number,
+  targetHeight: number,
+): HTMLCanvasElement {
   stage.batchDraw?.();
   const layers = stage.getLayers?.() ?? [];
   for (const layer of layers) {
@@ -107,9 +134,9 @@ export function captureStageFrame(stage: StageCapture, maxWidth: number): HTMLCa
   }
   stage.draw?.();
   const stageWidth = stage.width();
-  const pixelRatio = Math.max(1, Math.min(2, maxWidth / Math.max(stageWidth, 1)));
+  const pixelRatio = Math.max(1, Math.min(2, targetWidth / Math.max(stageWidth, 1)));
   const canvas = stage.toCanvas({ pixelRatio });
-  return fitEvenCanvas(canvas, maxWidth);
+  return fitExactCanvas(canvas, targetWidth, targetHeight);
 }
 
 /**
@@ -227,13 +254,14 @@ async function paintExportFrame(
   frameIndex: number,
   fps: number,
   totalMs: number,
-  maxWidth: number,
+  targetWidth: number,
+  targetHeight: number,
   renderFrame: (elements: BoardElement[]) => Promise<void>,
 ): Promise<HTMLCanvasElement> {
   // t = frameIndex / fps — exakte, CPU-unabhängige Zeit
   const elapsedMs = getFrameTimeMs(frameIndex, fps, totalMs);
   await renderFrame(getElementsAtTime(keyframes, elapsedMs));
-  return captureStageFrame(stage, maxWidth);
+  return captureStageFrame(stage, targetWidth, targetHeight);
 }
 
 async function exportGif({
@@ -258,7 +286,16 @@ async function exportGif({
   const gif = GIFEncoder();
 
   for (let i = 0; i < frameCount; i++) {
-    const canvas = await paintExportFrame(keyframes, stage, i, fps, totalMs, GIF_MAX_WIDTH, renderFrame);
+    const canvas = await paintExportFrame(
+      keyframes,
+      stage,
+      i,
+      fps,
+      totalMs,
+      EXPORT_GIF_WIDTH,
+      EXPORT_GIF_HEIGHT,
+      renderFrame,
+    );
     writeGifFrame(gif, canvas, fps, i === 0);
     onProgress?.(Math.round(((i + 1) / frameCount) * 100), progressLabel);
     if (i % 4 === 0) await wait(0);
@@ -302,7 +339,16 @@ async function exportWithWhammy({
   const frameCount = getExportFrameCount(keyframes, fps);
   const label = "Video wird erstellt…";
 
-  const first = await paintExportFrame(keyframes, stage, 0, fps, totalMs, VIDEO_MAX_WIDTH, renderFrame);
+  const first = await paintExportFrame(
+    keyframes,
+    stage,
+    0,
+    fps,
+    totalMs,
+    EXPORT_VIDEO_WIDTH,
+    EXPORT_VIDEO_HEIGHT,
+    renderFrame,
+  );
   const offscreen = createOffscreenExportCanvas(first.width, first.height);
   const webpFrames: string[] = [];
 
@@ -317,7 +363,8 @@ async function exportWithWhammy({
         i,
         fps,
         totalMs,
-        VIDEO_MAX_WIDTH,
+        EXPORT_VIDEO_WIDTH,
+        EXPORT_VIDEO_HEIGHT,
         renderFrame,
       );
       webpFrames.push(canvasToWebpDataUrl(frame, offscreen.canvas, offscreen.ctx));

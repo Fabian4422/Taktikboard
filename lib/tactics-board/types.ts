@@ -3,6 +3,13 @@ import { createId } from "@/lib/uuid";
 export const FIELD_WIDTH = 1050;
 export const FIELD_HEIGHT = 680;
 
+/** Anzeige- und Export-Rahmen (YouTube-tauglich). */
+export const DISPLAY_ASPECT_RATIO = 16 / 9;
+export const EXPORT_VIDEO_WIDTH = 1920;
+export const EXPORT_VIDEO_HEIGHT = 1080;
+export const EXPORT_GIF_WIDTH = 1280;
+export const EXPORT_GIF_HEIGHT = 720;
+
 export type FieldView = "full" | "half" | "half-blank" | "penalty" | "free";
 export type FieldRotation = 0 | 90 | 180 | 270;
 

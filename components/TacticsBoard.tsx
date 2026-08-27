@@ -16,7 +16,13 @@ import {
   isSupabaseConfigured,
 } from "@/lib/tactics-board/supabase";
 import { exportTacticsAnimation, type ExportFormat } from "@/lib/tactics-board/exportAnimation";
-import { FIELD_HEIGHT, FIELD_WIDTH, type BoardElement } from "@/lib/tactics-board/types";
+import {
+  EXPORT_VIDEO_HEIGHT,
+  EXPORT_VIDEO_WIDTH,
+  FIELD_HEIGHT,
+  FIELD_WIDTH,
+  type BoardElement,
+} from "@/lib/tactics-board/types";
 import { ExerciseLibraryModal } from "./tactics-board/ExerciseLibraryModal";
 
 const FieldCanvas = dynamic(
@@ -24,7 +30,7 @@ const FieldCanvas = dynamic(
   {
     ssr: false,
     loading: () => (
-      <div className="flex h-[420px] w-full items-center justify-center rounded-xl border border-slate-700 bg-emerald-900/30">
+      <div className="flex aspect-video w-full items-center justify-center rounded-xl border border-slate-700 bg-emerald-900/30">
         <span className="text-slate-400">Spielfeld wird geladen…</span>
       </div>
     ),
@@ -48,8 +54,8 @@ export function TacticsBoard({ exerciseId, initialName }: TacticsBoardProps) {
   const [isLoading, setIsLoading] = useState(Boolean(exerciseId));
   const [loadError, setLoadError] = useState<string | null>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [exportStageMounted, setExportStageMounted] = useState(false);
   const [exportOverride, setExportOverride] = useState<BoardElement[] | null>(null);
-  const [exportCanvasWidth, setExportCanvasWidth] = useState<number | null>(null);
   const [exportState, setExportState] = useState<{
     label: string;
     percent: number;
@@ -220,8 +226,8 @@ export function TacticsBoard({ exerciseId, initialName }: TacticsBoardProps) {
 
       board.stopPlayback();
       const startLabel = format === "gif" ? "GIF wird erstellt…" : "Video wird erstellt…";
-      // Offscreen-Stage mounten — Hauptboard bleibt unverändert
-      setExportCanvasWidth(liveStage.width());
+      // Offscreen-Stage in 1920×1080 (16:9) mounten — Hauptboard bleibt unverändert
+      setExportStageMounted(true);
       setExportOverride(board.elementsToRender);
       setExportState({ label: startLabel, percent: 0 });
 
@@ -266,7 +272,7 @@ export function TacticsBoard({ exerciseId, initialName }: TacticsBoardProps) {
         await new Promise((resolve) => window.setTimeout(resolve, 2800));
       } finally {
         setExportOverride(null);
-        setExportCanvasWidth(null);
+        setExportStageMounted(false);
         setExportState(null);
       }
     },
@@ -390,7 +396,13 @@ export function TacticsBoard({ exerciseId, initialName }: TacticsBoardProps) {
                 </button>
               </div>
             )}
-            <div className={isFullscreen ? "flex min-h-0 flex-1 flex-col" : undefined}>
+            <div
+              className={
+                isFullscreen
+                  ? "flex min-h-0 flex-1 flex-col"
+                  : "aspect-video w-full min-w-0"
+              }
+            >
               <FieldCanvas
                 stageRef={stageRef}
                 elements={board.elementsToRender}
@@ -405,26 +417,27 @@ export function TacticsBoard({ exerciseId, initialName }: TacticsBoardProps) {
                 onElementTransform={board.handleElementTransform}
                 fieldView={board.fieldView}
                 fieldRotation={board.fieldRotation}
-                fillParent={isFullscreen}
+                fillParent
                 preview={isFullscreen || isExporting}
               />
             </div>
 
-            {/* Versteckte Export-Stage: Frame-by-Frame ohne Live-Animation auf dem Hauptboard */}
-            {isExporting && exportCanvasWidth != null && (
+            {/* Versteckte Export-Stage: fest 1920×1080 (16:9) für YouTube */}
+            {isExporting && exportStageMounted && (
               <div
                 aria-hidden
                 className="pointer-events-none fixed overflow-hidden opacity-0"
                 style={{
                   left: -10000,
                   top: 0,
-                  width: exportCanvasWidth,
-                  height: Math.max(1, Math.round(exportCanvasWidth * (FIELD_HEIGHT / FIELD_WIDTH))),
+                  width: EXPORT_VIDEO_WIDTH,
+                  height: EXPORT_VIDEO_HEIGHT,
                 }}
               >
                 <FieldCanvas
                   stageRef={exportStageRef}
-                  width={exportCanvasWidth}
+                  width={EXPORT_VIDEO_WIDTH}
+                  height={EXPORT_VIDEO_HEIGHT}
                   elements={exportOverride ?? board.elementsToRender}
                   selectedId={null}
                   toolMode="select"
@@ -436,6 +449,7 @@ export function TacticsBoard({ exerciseId, initialName }: TacticsBoardProps) {
                   onFieldClick={() => undefined}
                   fieldView={board.fieldView}
                   fieldRotation={board.fieldRotation}
+                  fillParent
                   preview
                   sceneReadyRef={sceneReadyRef}
                 />
