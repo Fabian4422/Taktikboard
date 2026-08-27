@@ -116,7 +116,7 @@ export function getFieldViewport(view: FieldView): FieldViewport {
   return { x: 0, y: 0, w: FIELD_WIDTH, h: FIELD_HEIGHT };
 }
 
-/** Achsen bleiben fest: X = horizontal, Y = vertikal – Views drehen das Feld nicht. */
+/** Views drehen das Feld nicht — nur die manuelle Nutzer-Rotation (90°-Schritte). */
 export function getViewBaseRotation(_view: FieldView): FieldRotation {
   return 0;
 }
@@ -131,9 +131,12 @@ export function showsFieldStripes(_view: FieldView): boolean {
   return true;
 }
 
-/** Keine View-/Export-Drehung: Achsen und Objektkoordinaten bleiben unverändert. */
-export function getEffectiveRotation(_view: FieldView, _userRotation: FieldRotation): FieldRotation {
-  return 0;
+/**
+ * Effektive Canvas-Drehung: nur manuelle fieldRotation.
+ * Element-X/Y bleiben unverändert — die Konva-Group dreht die Darstellung.
+ */
+export function getEffectiveRotation(_view: FieldView, userRotation: FieldRotation): FieldRotation {
+  return userRotation;
 }
 
 export function getRotatedViewportSize(viewport: FieldViewport, rotation: FieldRotation) {
@@ -143,6 +146,7 @@ export function getRotatedViewportSize(viewport: FieldViewport, rotation: FieldR
   return { w: viewport.w, h: viewport.h };
 }
 
+/** 90° im Uhrzeigersinn. */
 export function nextFieldRotation(current: FieldRotation): FieldRotation {
   return ((current + 90) % 360) as FieldRotation;
 }

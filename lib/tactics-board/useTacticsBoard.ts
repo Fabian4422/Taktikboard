@@ -60,7 +60,7 @@ export function useTacticsBoard(initialDocument?: TacticsBoardDocument) {
   const [displayElements, setDisplayElements] = useState<BoardElement[]>([]);
   const [fieldView, setFieldView] = useState<FieldView>(initialDocument?.fieldView ?? "full");
   const [fieldRotation, setFieldRotation] = useState<FieldRotation>(
-    initialDocument?.fieldRotation ?? 0,
+    initialDocument?.fieldRotation ?? 90,
   );
   const [playerScalePercent, setPlayerScalePercentState] = useState(DEFAULT_PLAYER_SCALE_PERCENT);
   const [coneColor, setConeColor] = useState(DEFAULT_CONE_COLOR);
@@ -298,7 +298,7 @@ export function useTacticsBoard(initialDocument?: TacticsBoardDocument) {
     const migrated = migrateDocumentToCurrentField(doc);
     setDocument(migrated);
     setFieldView(migrated.fieldView ?? "full");
-    setFieldRotation(0);
+    setFieldRotation(migrated.fieldRotation ?? 90);
     setCurrentStepIndex(0);
     setSelectedId(null);
     setIsPlaying(false);
