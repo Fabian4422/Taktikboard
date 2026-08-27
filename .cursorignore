@@ -1,0 +1,53 @@
+﻿# Cursor: nicht indexieren / nicht in den AI-Kontext ziehen
+
+# Abhängigkeiten & Caches
+node_modules/
+.pnp/
+.yarn/
+
+# Next.js Build-Artefakte
+.next/
+out/
+build/
+dist/
+coverage/
+tsconfig.tsbuildinfo
+
+# PWA / Workbox (generiert)
+public/sw.js
+public/sw.js.map
+public/workbox-*.js
+public/workbox-*.js.map
+public/fallback-*.js
+public/swe-worker-*.js
+public/precache-manifest.*.js
+
+# Lockfiles & Logs
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+*.log
+
+# Secrets
+.env
+.env.*
+!.env.example
+
+# Große Medien (falls später hinzugefügt)
+*.mp4
+*.webm
+*.mov
+*.avi
+*.zip
+*.tar
+*.gz
+*.7z
+*.psd
+*.ai
+
+# OS / Editor
+.DS_Store
+Thumbs.db

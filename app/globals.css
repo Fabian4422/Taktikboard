@@ -1,0 +1,44 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --background: #121212;
+  --foreground: #f8fafc;
+}
+
+html {
+  height: 100%;
+  touch-action: manipulation;
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  min-height: 100%;
+  background: var(--background);
+  color: var(--foreground);
+  font-family: system-ui, -apple-system, sans-serif;
+  overscroll-behavior: none;
+  -webkit-overflow-scrolling: touch;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Eingabefelder weiterhin bedienbar */
+input,
+textarea,
+select,
+[contenteditable="true"] {
+  touch-action: auto;
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+/* Taktikboard-Canvas: keine Browser-Gesten beim Zeichnen/Verschieben */
+.tactics-canvas,
+.tactics-canvas canvas {
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+}

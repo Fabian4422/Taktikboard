@@ -1,0 +1,40 @@
+{
+  "name": "taktikboard",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev --turbopack",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint"
+  },
+  "dependencies": {
+    "@ducanh2912/next-pwa": "^10.2.9",
+    "@next/swc-win32-x64-msvc": "^15.5.23",
+    "@supabase/supabase-js": "^2.112.3",
+    "gifenc": "^1.0.3",
+    "konva": "^9.3.20",
+    "mediabunny": "^1.55.1",
+    "next": "^15.2.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "react-konva": "^19.0.3",
+    "ts-whammy": "^1.1.5",
+    "webm-muxer": "^5.1.4"
+  },
+  "devDependencies": {
+    "@eslint/eslintrc": "^3",
+    "@types/node": "^20",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "autoprefixer": "^10.4.21",
+    "eslint": "^9",
+    "eslint-config-next": "^15.2.0",
+    "postcss": "^8.5.3",
+    "tailwindcss": "^3.4.17",
+    "typescript": "^5"
+  },
+  "overrides": {
+    "es-abstract": "^1.23.9"
+  }
+}
