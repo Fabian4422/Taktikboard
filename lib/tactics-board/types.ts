@@ -6,7 +6,7 @@ export const FIELD_HEIGHT = 680;
 export type FieldView = "full" | "half" | "half-blank" | "penalty" | "free";
 export type FieldRotation = 0 | 90 | 180 | 270;
 
-export type PlayerType = "player-a" | "player-b" | "player-gk";
+export type PlayerType = "player-a" | "player-b" | "player-c" | "player-d" | "player-gk";
 export type EquipmentType = "cone" | "hurdle" | "mini-goal" | "big-goal" | "ball";
 export type DrawingType = "pass-line" | "run-path" | "dribble-path" | "guide-line";
 
@@ -22,6 +22,8 @@ export interface BoardElement {
   number?: number;
   /** Skalierung (1 = 100 %); Ball standardmäßig kleiner */
   scale?: number;
+  /** Farbe (z. B. Hütchen) als Hex-Wert */
+  color?: string;
   points?: number[];
 }
 
@@ -84,9 +86,36 @@ export function isRotatable(type: ElementType): boolean {
 }
 
 const LINE_TYPES = new Set<ElementType>(["pass-line", "run-path", "dribble-path", "guide-line"]);
-const NUMBER_TYPES = new Set<ElementType>(["player-a", "player-b", "player-gk"]);
+const NUMBER_TYPES = new Set<ElementType>([
+  "player-a",
+  "player-b",
+  "player-c",
+  "player-d",
+  "player-gk",
+]);
+const PLAYER_TYPES = new Set<ElementType>([
+  "player-a",
+  "player-b",
+  "player-c",
+  "player-d",
+  "player-gk",
+]);
 
 export const DEFAULT_BALL_SCALE = 0.55;
+export const DEFAULT_PLAYER_SCALE_PERCENT = 100;
+export const DEFAULT_CONE_COLOR = "#f97316";
+
+export const CONE_COLOR_OPTIONS: ReadonlyArray<{ label: string; value: string }> = [
+  { label: "Orange", value: "#f97316" },
+  { label: "Gelb", value: "#eab308" },
+  { label: "Blau", value: "#3b82f6" },
+  { label: "Rot", value: "#ef4444" },
+  { label: "Weiß", value: "#f8fafc" },
+];
+
+export function isPlayerType(type: ElementType): boolean {
+  return PLAYER_TYPES.has(type);
+}
 
 export function getDefaultScale(type: ElementType): number {
   return type === "ball" ? DEFAULT_BALL_SCALE : 1;

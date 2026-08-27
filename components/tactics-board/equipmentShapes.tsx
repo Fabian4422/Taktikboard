@@ -20,6 +20,22 @@ const deco = {
   shadowForStrokeEnabled: false,
 } as const;
 
+function getConePalette(color: string) {
+  switch (color.toLowerCase()) {
+    case "#eab308":
+      return { fill: "#eab308", stroke: "#a16207", stripe: "#fde047", tip: "#fefce8" };
+    case "#3b82f6":
+      return { fill: "#3b82f6", stroke: "#1d4ed8", stripe: "#93c5fd", tip: "#eff6ff" };
+    case "#ef4444":
+      return { fill: "#ef4444", stroke: "#b91c1c", stripe: "#fca5a5", tip: "#fef2f2" };
+    case "#f8fafc":
+      return { fill: "#f8fafc", stroke: "#64748b", stripe: "#e2e8f0", tip: "#ffffff" };
+    case "#f97316":
+    default:
+      return { fill: "#f97316", stroke: "#c2410c", stripe: "#fdba74", tip: "#fff7ed" };
+  }
+}
+
 export function SoccerBallIcon({ selected }: { selected: boolean }) {
   return (
     <Group clipFunc={(ctx: Konva.Context) => ctx.arc(0, 0, BALL_RADIUS, 0, Math.PI * 2)}>
@@ -209,17 +225,24 @@ export function HurdleIcon({ selected }: { selected: boolean }) {
   );
 }
 
-export function ConeIcon({ selected }: { selected: boolean }) {
+export function ConeIcon({
+  selected,
+  color = "#f97316",
+}: {
+  selected: boolean;
+  color?: string;
+}) {
+  const palette = getConePalette(color);
   return (
     <Group>
       <Ellipse x={0} y={8} radiusX={10} radiusY={4} fill="rgba(15,23,42,0.25)" {...deco} />
-      <Line points={[0, -14, 11, 8, -11, 8]} closed fill="#f97316" {...deco} />
-      <Line points={[-5, 1, 5, 1]} stroke="#fdba74" strokeWidth={2.5} {...deco} />
-      <Line points={[-3.5, -6, 3.5, -6]} stroke="#fff7ed" strokeWidth={2} {...deco} />
+      <Line points={[0, -14, 11, 8, -11, 8]} closed fill={palette.fill} {...deco} />
+      <Line points={[-5, 1, 5, 1]} stroke={palette.stripe} strokeWidth={2.5} {...deco} />
+      <Line points={[-3.5, -6, 3.5, -6]} stroke={palette.tip} strokeWidth={2} {...deco} />
       <Line
         points={[0, -14, 11, 8, -11, 8]}
         closed
-        stroke={selected ? "#38bdf8" : "#c2410c"}
+        stroke={selected ? "#38bdf8" : palette.stroke}
         strokeWidth={selected ? 2.2 : 1.4}
         fill="transparent"
       />

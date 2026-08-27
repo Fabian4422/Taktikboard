@@ -4,8 +4,10 @@ export const ELEMENT_META: Record<
   ElementType,
   { label: string; color: string; group: "spieler" | "material" | "zeichnen" }
 > = {
-  "player-a": { label: "Spieler A", color: "#ef4444", group: "spieler" },
-  "player-b": { label: "Spieler B", color: "#3b82f6", group: "spieler" },
+  "player-a": { label: "Spieler A (Rot)", color: "#ef4444", group: "spieler" },
+  "player-b": { label: "Spieler B (Blau)", color: "#3b82f6", group: "spieler" },
+  "player-c": { label: "Spieler C (Grün)", color: "#22c55e", group: "spieler" },
+  "player-d": { label: "Spieler D (Lila)", color: "#a855f7", group: "spieler" },
   "player-gk": { label: "Torwart", color: "#eab308", group: "spieler" },
   cone: { label: "Hütchen", color: "#f97316", group: "material" },
   hurdle: { label: "Hürde", color: "#fbbf24", group: "material" },

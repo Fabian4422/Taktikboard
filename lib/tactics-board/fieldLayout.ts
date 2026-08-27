@@ -116,9 +116,8 @@ export function getFieldViewport(view: FieldView): FieldViewport {
   return { x: 0, y: 0, w: FIELD_WIDTH, h: FIELD_HEIGHT };
 }
 
-/** Halbes Feld / Strafraum: Tor liegt oben (90°), Nutzer-Rotation kommt dazu. */
-export function getViewBaseRotation(view: FieldView): FieldRotation {
-  if (view === "half" || view === "half-blank" || view === "penalty") return 90;
+/** Achsen bleiben fest: X = horizontal, Y = vertikal – Views drehen das Feld nicht. */
+export function getViewBaseRotation(_view: FieldView): FieldRotation {
   return 0;
 }
 

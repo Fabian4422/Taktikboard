@@ -2,6 +2,7 @@
 
 import type { ReactNode } from "react";
 import type { ElementType, FieldRotation, FieldView, ToolMode } from "@/lib/tactics-board/types";
+import { CONE_COLOR_OPTIONS } from "@/lib/tactics-board/types";
 import { ELEMENT_META } from "@/lib/tactics-board/elementStyles";
 import { FIELD_VIEW_LABELS, getEffectiveRotation } from "@/lib/tactics-board/fieldLayout";
 
@@ -14,9 +15,13 @@ interface ToolbarProps {
   fieldRotation: FieldRotation;
   onFieldViewChange: (view: FieldView) => void;
   onRotateField: () => void;
+  playerScalePercent: number;
+  onPlayerScalePercentChange: (percent: number) => void;
+  coneColor: string;
+  onConeColorChange: (color: string) => void;
 }
 
-function MaterialIcon({ type }: { type: ElementType }) {
+function MaterialIcon({ type, color }: { type: ElementType; color?: string }) {
   switch (type) {
     case "ball":
       return (
@@ -55,7 +60,12 @@ function MaterialIcon({ type }: { type: ElementType }) {
     case "cone":
       return (
         <svg viewBox="0 0 14 14" className="h-4 w-4 shrink-0" aria-hidden>
-          <polygon points="7,1 13,13 1,13" fill="#f97316" stroke="#c2410c" strokeWidth="1" />
+          <polygon
+            points="7,1 13,13 1,13"
+            fill={color ?? "#f97316"}
+            stroke="#64748b"
+            strokeWidth="1"
+          />
         </svg>
       );
     default:
@@ -114,6 +124,10 @@ export function Toolbar({
   fieldRotation,
   onFieldViewChange,
   onRotateField,
+  playerScalePercent,
+  onPlayerScalePercentChange,
+  coneColor,
+  onConeColorChange,
 }: ToolbarProps) {
   const elements = Object.entries(ELEMENT_META) as [ElementType, (typeof ELEMENT_META)[ElementType]][];
   const displayedRotation = getEffectiveRotation(fieldView, fieldRotation);
@@ -170,20 +184,69 @@ export function Toolbar({
                   active={toolMode === type}
                   label={meta.label}
                   color={meta.group === "spieler" || meta.group === "zeichnen" ? meta.color : undefined}
-                  icon={meta.group === "material" ? <MaterialIcon type={type} /> : undefined}
+                  icon={
+                    meta.group === "material" ? (
+                      <MaterialIcon type={type} color={type === "cone" ? coneColor : undefined} />
+                    ) : undefined
+                  }
                   onClick={() => onToolChange(type)}
                 />
               ))}
           </div>
+          {key === "spieler" && (
+            <label className="mt-3 flex flex-col gap-1">
+              <span className="flex justify-between text-xs text-slate-400">
+                <span>Spielergröße</span>
+                <span>{playerScalePercent} %</span>
+              </span>
+              <input
+                type="range"
+                min={25}
+                max={200}
+                step={5}
+                value={playerScalePercent}
+                onChange={(e) => onPlayerScalePercentChange(Number(e.target.value))}
+                className="w-full accent-sky-400"
+              />
+              <p className="text-xs text-slate-500">
+                Gilt für alle Spieler und neue Platzierungen.
+              </p>
+            </label>
+          )}
           {key === "zeichnen" && (
             <p className="mt-2 text-xs text-slate-500">
               Zwei Klicks auf dem Feld: Start- und Endpunkt setzen.
             </p>
           )}
           {key === "material" && (
-            <p className="mt-2 text-xs text-slate-500">
-              Tore und Hürden sind drehbar (Anfasser oder Taste R).
-            </p>
+            <>
+              <div className="mt-3">
+                <p className="mb-2 text-xs text-slate-400">Hütchen-Farbe</p>
+                <div className="flex flex-wrap gap-2">
+                  {CONE_COLOR_OPTIONS.map((opt) => (
+                    <button
+                      key={opt.value}
+                      type="button"
+                      title={opt.label}
+                      aria-label={opt.label}
+                      onClick={() => {
+                        onConeColorChange(opt.value);
+                        onToolChange("cone");
+                      }}
+                      className={`h-7 w-7 rounded-full border-2 transition ${
+                        coneColor === opt.value
+                          ? "border-emerald-400 ring-2 ring-emerald-400/40"
+                          : "border-slate-600 hover:border-slate-400"
+                      }`}
+                      style={{ backgroundColor: opt.value }}
+                    />
+                  ))}
+                </div>
+              </div>
+              <p className="mt-2 text-xs text-slate-500">
+                Tore, Hürden und Hütchen sind drehbar (Anfasser oder Taste R).
+              </p>
+            </>
           )}
         </div>
       ))}

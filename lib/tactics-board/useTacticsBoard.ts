@@ -13,8 +13,11 @@ import {
   interpolateElementsTimed,
   getPlaybackPlan,
   isRotatable,
+  isPlayerType,
   FIELD_HEIGHT,
   FIELD_WIDTH,
+  DEFAULT_PLAYER_SCALE_PERCENT,
+  DEFAULT_CONE_COLOR,
   type FieldRotation,
   type FieldView,
   type KeyframeSpeed,
@@ -50,7 +53,10 @@ function compensateRotatableElements(elements: BoardElement[], baseDelta: number
   });
 }
 
-function nextPlayerNumber(elements: BoardElement[], type: "player-a" | "player-b"): number {
+function nextPlayerNumber(
+  elements: BoardElement[],
+  type: "player-a" | "player-b" | "player-c" | "player-d",
+): number {
   const numbers = elements
     .filter((el) => el.type === type && el.number != null)
     .map((el) => el.number!);
@@ -73,6 +79,8 @@ export function useTacticsBoard(initialDocument?: TacticsBoardDocument) {
   const [fieldRotation, setFieldRotation] = useState<FieldRotation>(
     initialDocument?.fieldRotation ?? 0,
   );
+  const [playerScalePercent, setPlayerScalePercentState] = useState(DEFAULT_PLAYER_SCALE_PERCENT);
+  const [coneColor, setConeColor] = useState(DEFAULT_CONE_COLOR);
   const [playbackRate, setPlaybackRate] = useState<PlaybackRate>(1);
 
   const animationRef = useRef<number | null>(null);
@@ -186,20 +194,36 @@ export function useTacticsBoard(initialDocument?: TacticsBoardDocument) {
         x,
         y,
         rotation: isRotatable(toolMode) ? screenUprightRotation(fieldView) : undefined,
-        scale: getDefaultScale(toolMode),
+        scale: isPlayerType(toolMode)
+          ? playerScalePercent / 100
+          : getDefaultScale(toolMode),
+        color: toolMode === "cone" ? coneColor : undefined,
       };
 
       if (toolMode === "player-a") {
         base.number = nextPlayerNumber(currentKeyframe.elements, "player-a");
       } else if (toolMode === "player-b") {
         base.number = nextPlayerNumber(currentKeyframe.elements, "player-b");
+      } else if (toolMode === "player-c") {
+        base.number = nextPlayerNumber(currentKeyframe.elements, "player-c");
+      } else if (toolMode === "player-d") {
+        base.number = nextPlayerNumber(currentKeyframe.elements, "player-d");
       }
 
       updateCurrentElements((els) => [...els, base]);
       setSelectedId(base.id);
       setToolMode("select");
     },
-    [currentKeyframe.elements, fieldView, isPlaying, lineDraft, toolMode, updateCurrentElements],
+    [
+      coneColor,
+      currentKeyframe.elements,
+      fieldView,
+      isPlaying,
+      lineDraft,
+      playerScalePercent,
+      toolMode,
+      updateCurrentElements,
+    ],
   );
 
   const addKeyframe = useCallback(() => {
@@ -237,7 +261,7 @@ export function useTacticsBoard(initialDocument?: TacticsBoardDocument) {
   }, [selectedId, updateCurrentElements]);
 
   const updateSelectedElement = useCallback(
-    (patch: Partial<Pick<BoardElement, "x" | "y" | "scale" | "number">>) => {
+    (patch: Partial<Pick<BoardElement, "x" | "y" | "scale" | "number" | "color">>) => {
       if (!selectedId || isPlaying) return;
       updateCurrentElements((elements) =>
         elements.map((el) => (el.id === selectedId ? { ...el, ...patch } : el)),
@@ -245,6 +269,21 @@ export function useTacticsBoard(initialDocument?: TacticsBoardDocument) {
     },
     [isPlaying, selectedId, updateCurrentElements],
   );
+
+  const setPlayerScalePercent = useCallback((percent: number) => {
+    const clamped = Math.max(25, Math.min(200, Math.round(percent)));
+    setPlayerScalePercentState(clamped);
+    const scale = clamped / 100;
+    setDocument((doc) => ({
+      ...doc,
+      keyframes: doc.keyframes.map((kf) => ({
+        ...kf,
+        elements: kf.elements.map((el) =>
+          isPlayerType(el.type) ? { ...el, scale } : el,
+        ),
+      })),
+    }));
+  }, []);
 
   const setKeyframeSpeed = useCallback((index: number, speed: KeyframeSpeed) => {
     if (isPlaying) return;
@@ -446,6 +485,10 @@ export function useTacticsBoard(initialDocument?: TacticsBoardDocument) {
     setFieldView: changeFieldView,
     fieldRotation,
     rotateField,
+    playerScalePercent,
+    setPlayerScalePercent,
+    coneColor,
+    setConeColor,
     startPlayback,
     pausePlayback,
     stopPlayback,

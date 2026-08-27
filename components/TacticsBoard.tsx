@@ -351,6 +351,10 @@ export function TacticsBoard({ exerciseId, initialName }: TacticsBoardProps) {
             fieldRotation={board.fieldRotation}
             onFieldViewChange={board.setFieldView}
             onRotateField={board.rotateField}
+            playerScalePercent={board.playerScalePercent}
+            onPlayerScalePercentChange={board.setPlayerScalePercent}
+            coneColor={board.coneColor}
+            onConeColorChange={board.setConeColor}
           />
         )}
 

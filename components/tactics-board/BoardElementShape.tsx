@@ -158,6 +158,8 @@ export function BoardElementShape({
   switch (element.type) {
     case "player-a":
     case "player-b":
+    case "player-c":
+    case "player-d":
     case "player-gk": {
       const r = getPlayerRadius(element.type);
       return (
@@ -195,7 +197,7 @@ export function BoardElementShape({
       return (
         <Group>
           <Group {...commonGroupProps}>
-            <ConeIcon selected={selected} />
+            <ConeIcon selected={selected} color={element.color} />
           </Group>
           {transformer}
         </Group>

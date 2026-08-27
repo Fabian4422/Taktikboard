@@ -2,6 +2,8 @@
 
 import type { BoardElement } from "@/lib/tactics-board/types";
 import {
+  CONE_COLOR_OPTIONS,
+  DEFAULT_CONE_COLOR,
   elementHasNumber,
   elementSupportsScale,
   getElementScale,
@@ -11,7 +13,7 @@ import { ELEMENT_META } from "@/lib/tactics-board/elementStyles";
 
 interface ObjectInspectorProps {
   element: BoardElement;
-  onUpdate: (patch: Partial<Pick<BoardElement, "x" | "y" | "scale" | "number">>) => void;
+  onUpdate: (patch: Partial<Pick<BoardElement, "x" | "y" | "scale" | "number" | "color">>) => void;
   onClose: () => void;
   onRotate?: (delta: number) => void;
   onDelete?: () => void;
@@ -30,6 +32,8 @@ export function ObjectInspector({
   const showNumber = elementHasNumber(element.type);
   const showScale = elementSupportsScale(element.type);
   const showRotate = isRotatable(element.type);
+  const showConeColor = element.type === "cone";
+  const activeConeColor = element.color ?? DEFAULT_CONE_COLOR;
 
   const parseNumber = (value: string, fallback: number) => {
     const parsed = Number.parseFloat(value);
@@ -119,6 +123,29 @@ export function ObjectInspector({
             className="rounded-lg border border-slate-600 bg-slate-950 px-2 py-1.5 text-sm text-white"
           />
         </label>
+      )}
+
+      {showConeColor && (
+        <div className="mt-3">
+          <p className="mb-2 text-xs text-slate-400">Hütchen-Farbe</p>
+          <div className="flex flex-wrap gap-2">
+            {CONE_COLOR_OPTIONS.map((opt) => (
+              <button
+                key={opt.value}
+                type="button"
+                title={opt.label}
+                aria-label={opt.label}
+                onClick={() => onUpdate({ color: opt.value })}
+                className={`h-7 w-7 rounded-full border-2 transition ${
+                  activeConeColor === opt.value
+                    ? "border-emerald-400 ring-2 ring-emerald-400/40"
+                    : "border-slate-600 hover:border-slate-400"
+                }`}
+                style={{ backgroundColor: opt.value }}
+              />
+            ))}
+          </div>
+        </div>
       )}
 
       {showRotate && onRotate && (
