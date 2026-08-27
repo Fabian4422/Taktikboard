@@ -1,4 +1,5 @@
 import type { FieldRotation, FieldView, Keyframe, TacticsBoardDocument } from "./types";
+import { FIELD_HEIGHT, FIELD_WIDTH, migrateDocumentToCurrentField } from "./types";
 import { getSupabaseClient, isSupabaseConfigured } from "@/lib/supabaseClient";
 import { createId } from "@/lib/uuid";
 
@@ -63,15 +64,15 @@ function boardDataToDocument(
   title: string,
   boardData: BoardData,
 ): TacticsBoardDocument {
-  return {
+  return migrateDocumentToCurrentField({
     id,
     name: title,
     keyframes: boardData.keyframes ?? [],
-    fieldWidth: boardData.fieldWidth ?? 1050,
-    fieldHeight: boardData.fieldHeight ?? 680,
+    fieldWidth: boardData.fieldWidth ?? FIELD_WIDTH,
+    fieldHeight: boardData.fieldHeight ?? FIELD_HEIGHT,
     fieldView: boardData.fieldView,
     fieldRotation: boardData.fieldRotation,
-  };
+  });
 }
 
 function slugify(value: string): string {

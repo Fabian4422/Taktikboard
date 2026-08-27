@@ -237,7 +237,7 @@ export function FieldCanvas({
   const rotation = getEffectiveRotation(fieldView, fieldRotation);
   const rotated = getRotatedViewportSize(viewport, rotation);
 
-  // Fester 16:9-Rahmen; Spielfeld füllt diesen per Cover (ohne leere Ränder).
+  // Fester 16:9-Rahmen; Viewport proportional einpassen (Contain, kein Abschneiden).
   let stageW: number;
   let stageH: number;
   if (fillParent && containerH > 0) {
@@ -253,7 +253,7 @@ export function FieldCanvas({
     stageH = containerW / DISPLAY_ASPECT_RATIO;
   }
 
-  const scale = Math.max(stageW / Math.max(rotated.w, 1), stageH / Math.max(rotated.h, 1));
+  const scale = Math.min(stageW / Math.max(rotated.w, 1), stageH / Math.max(rotated.h, 1));
   const logicalW = stageW / scale;
   const logicalH = stageH / scale;
   const contentOffsetX = (logicalW - rotated.w) / 2;
@@ -303,6 +303,15 @@ export function FieldCanvas({
           style={{ cursor: preview ? "default" : toolMode !== "select" && !isPlaying ? "crosshair" : "default" }}
         >
           <Layer listening={!preview}>
+            {/* Rasen-Hintergrund füllt den 16:9-Rahmen (auch bei Halbfeld-Contain). */}
+            <Rect
+              x={0}
+              y={0}
+              width={logicalW}
+              height={logicalH}
+              fill="#277a43"
+              listening={false}
+            />
             <Group x={contentOffsetX} y={contentOffsetY}>
               <Group
                 x={rotated.w / 2}

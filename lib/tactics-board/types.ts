@@ -1,7 +1,12 @@
 import { createId } from "@/lib/uuid";
 
-export const FIELD_WIDTH = 1050;
-export const FIELD_HEIGHT = 680;
+/** Logisches Spielfeld = natives 16:9 (entspricht Video-Export). */
+export const FIELD_WIDTH = 1920;
+export const FIELD_HEIGHT = 1080;
+
+/** Altes FIFA-Layout — für Koordinaten-Migration bestehender Übungen. */
+export const LEGACY_FIELD_WIDTH = 1050;
+export const LEGACY_FIELD_HEIGHT = 680;
 
 /** Anzeige- und Export-Rahmen (YouTube-tauglich). */
 export const DISPLAY_ASPECT_RATIO = 16 / 9;
@@ -112,6 +117,11 @@ export const DEFAULT_BALL_SCALE = 0.55;
 export const DEFAULT_PLAYER_SCALE_PERCENT = 100;
 export const DEFAULT_CONE_COLOR = "#f97316";
 
+/** Einheitliche Größenanpassung relativ zum Legacy-Feld (1050×680). */
+export const FIELD_SIZE_FACTOR = Math.sqrt(
+  (FIELD_WIDTH / LEGACY_FIELD_WIDTH) * (FIELD_HEIGHT / LEGACY_FIELD_HEIGHT),
+);
+
 export const CONE_COLOR_OPTIONS: ReadonlyArray<{ label: string; value: string }> = [
   { label: "Orange", value: "#f97316" },
   { label: "Gelb", value: "#eab308" },
@@ -125,7 +135,9 @@ export function isPlayerType(type: ElementType): boolean {
 }
 
 export function getDefaultScale(type: ElementType): number {
-  return type === "ball" ? DEFAULT_BALL_SCALE : 1;
+  if (type === "ball") return DEFAULT_BALL_SCALE * FIELD_SIZE_FACTOR;
+  if (LINE_TYPES.has(type)) return 1;
+  return FIELD_SIZE_FACTOR;
 }
 
 export function getElementScale(element: BoardElement): number {
@@ -149,6 +161,65 @@ export function cloneElements(elements: BoardElement[]): BoardElement[] {
     ...el,
     points: el.points ? [...el.points] : undefined,
   }));
+}
+
+/** Skaliert Element-Koordinaten relativ von einem Feldmaß auf ein anderes (prozentual). */
+export function scaleBoardElement(
+  element: BoardElement,
+  fromW: number,
+  fromH: number,
+  toW: number,
+  toH: number,
+): BoardElement {
+  if (fromW <= 0 || fromH <= 0 || (fromW === toW && fromH === toH)) {
+    return { ...element, points: element.points ? [...element.points] : undefined };
+  }
+  const sx = toW / fromW;
+  const sy = toH / fromH;
+  const sizeFactor = Math.sqrt(sx * sy);
+  const prevScale =
+    element.scale ??
+    (element.type === "ball" ? DEFAULT_BALL_SCALE : LINE_TYPES.has(element.type) ? 1 : 1);
+  return {
+    ...element,
+    x: element.x * sx,
+    y: element.y * sy,
+    scale: LINE_TYPES.has(element.type) ? element.scale : prevScale * sizeFactor,
+    points: element.points
+      ? element.points.map((v, i) => (i % 2 === 0 ? v * sx : v * sy))
+      : undefined,
+  };
+}
+
+export function scaleBoardElements(
+  elements: BoardElement[],
+  fromW: number,
+  fromH: number,
+  toW: number,
+  toH: number,
+): BoardElement[] {
+  return elements.map((el) => scaleBoardElement(el, fromW, fromH, toW, toH));
+}
+
+/**
+ * Bringt ein gespeichertes Board auf das aktuelle 16:9-Feldmaß.
+ * Alle Objekte werden relativ (prozentual) neu positioniert und skaliert.
+ */
+export function migrateDocumentToCurrentField(doc: TacticsBoardDocument): TacticsBoardDocument {
+  const fromW = doc.fieldWidth || LEGACY_FIELD_WIDTH;
+  const fromH = doc.fieldHeight || LEGACY_FIELD_HEIGHT;
+  if (fromW === FIELD_WIDTH && fromH === FIELD_HEIGHT) {
+    return doc;
+  }
+  return {
+    ...doc,
+    fieldWidth: FIELD_WIDTH,
+    fieldHeight: FIELD_HEIGHT,
+    keyframes: doc.keyframes.map((kf) => ({
+      ...kf,
+      elements: scaleBoardElements(kf.elements, fromW, fromH, FIELD_WIDTH, FIELD_HEIGHT),
+    })),
+  };
 }
 
 export function deepCloneKeyframe(keyframe: Keyframe): Keyframe {
@@ -204,8 +275,8 @@ export function getKeyframeSpeed(keyframe: Keyframe): KeyframeSpeed {
   return keyframe.speed ?? "normal";
 }
 
-/** Feld: 1050 Einheiten ≈ 105 m → 10 Einheiten = 1 m */
-const UNITS_PER_METER = 10;
+/** Feld: Breite ≈ 105 m → Einheiten pro Meter aus aktuellem Feldmaß. */
+const UNITS_PER_METER = FIELD_WIDTH / 105;
 
 /**
  * Referenztempo für die automatische Schritt-Dauer.

@@ -16,8 +16,10 @@ import {
   isPlayerType,
   FIELD_HEIGHT,
   FIELD_WIDTH,
+  FIELD_SIZE_FACTOR,
   DEFAULT_PLAYER_SCALE_PERCENT,
   DEFAULT_CONE_COLOR,
+  migrateDocumentToCurrentField,
   type FieldRotation,
   type FieldView,
   type KeyframeSpeed,
@@ -195,7 +197,7 @@ export function useTacticsBoard(initialDocument?: TacticsBoardDocument) {
         y,
         rotation: isRotatable(toolMode) ? screenUprightRotation(fieldView) : undefined,
         scale: isPlayerType(toolMode)
-          ? playerScalePercent / 100
+          ? (playerScalePercent / 100) * FIELD_SIZE_FACTOR
           : getDefaultScale(toolMode),
         color: toolMode === "cone" ? coneColor : undefined,
       };
@@ -273,7 +275,7 @@ export function useTacticsBoard(initialDocument?: TacticsBoardDocument) {
   const setPlayerScalePercent = useCallback((percent: number) => {
     const clamped = Math.max(25, Math.min(200, Math.round(percent)));
     setPlayerScalePercentState(clamped);
-    const scale = clamped / 100;
+    const scale = (clamped / 100) * FIELD_SIZE_FACTOR;
     setDocument((doc) => ({
       ...doc,
       keyframes: doc.keyframes.map((kf) => ({
@@ -325,9 +327,10 @@ export function useTacticsBoard(initialDocument?: TacticsBoardDocument) {
   );
 
   const applyDocument = useCallback((doc: TacticsBoardDocument) => {
-    setDocument(doc);
-    setFieldView(doc.fieldView ?? "full");
-    setFieldRotation(doc.fieldRotation ?? 0);
+    const migrated = migrateDocumentToCurrentField(doc);
+    setDocument(migrated);
+    setFieldView(migrated.fieldView ?? "full");
+    setFieldRotation(migrated.fieldRotation ?? 0);
     setCurrentStepIndex(0);
     setSelectedId(null);
     setIsPlaying(false);

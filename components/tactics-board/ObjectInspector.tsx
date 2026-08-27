@@ -6,6 +6,7 @@ import {
   DEFAULT_CONE_COLOR,
   elementHasNumber,
   elementSupportsScale,
+  getDefaultScale,
   getElementScale,
   isRotatable,
 } from "@/lib/tactics-board/types";
@@ -28,7 +29,8 @@ export function ObjectInspector({
 }: ObjectInspectorProps) {
   const meta = ELEMENT_META[element.type];
   const scale = getElementScale(element);
-  const scalePercent = Math.round(scale * 100);
+  const baseScale = getDefaultScale(element.type) || 1;
+  const scalePercent = Math.round((scale / baseScale) * 100);
   const showNumber = elementHasNumber(element.type);
   const showScale = elementSupportsScale(element.type);
   const showRotate = isRotatable(element.type);
@@ -96,7 +98,11 @@ export function ObjectInspector({
             max={200}
             step={5}
             value={scalePercent}
-            onChange={(e) => onUpdate({ scale: parseNumber(e.target.value, scalePercent) / 100 })}
+            onChange={(e) =>
+              onUpdate({
+                scale: (parseNumber(e.target.value, scalePercent) / 100) * baseScale,
+              })
+            }
             className="w-full accent-sky-400"
           />
         </label>
