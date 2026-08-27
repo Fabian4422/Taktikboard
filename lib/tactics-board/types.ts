@@ -3,7 +3,7 @@ import { createId } from "@/lib/uuid";
 export const FIELD_WIDTH = 1050;
 export const FIELD_HEIGHT = 680;
 
-export type FieldView = "full" | "half" | "penalty" | "free";
+export type FieldView = "full" | "half" | "half-blank" | "penalty" | "free";
 export type FieldRotation = 0 | 90 | 180 | 270;
 
 export type PlayerType = "player-a" | "player-b" | "player-gk";

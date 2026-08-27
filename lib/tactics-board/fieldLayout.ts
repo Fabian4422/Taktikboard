@@ -91,7 +91,7 @@ export function getFieldMarkingArcs() {
 export function getFieldViewport(view: FieldView): FieldViewport {
   const layout = getFieldLayout();
 
-  if (view === "half") {
+  if (view === "half" || view === "half-blank") {
     return {
       x: 0,
       y: 0,
@@ -118,8 +118,18 @@ export function getFieldViewport(view: FieldView): FieldViewport {
 
 /** Halbes Feld / Strafraum: Tor liegt oben (90°), Nutzer-Rotation kommt dazu. */
 export function getViewBaseRotation(view: FieldView): FieldRotation {
-  if (view === "half" || view === "penalty") return 90;
+  if (view === "half" || view === "half-blank" || view === "penalty") return 90;
   return 0;
+}
+
+/** Ob FIFA-Feldlinien gezeichnet werden (nicht bei freien/blanken Flächen). */
+export function showsFieldLines(view: FieldView): boolean {
+  return view !== "free" && view !== "half-blank";
+}
+
+/** Rasenstreifen nur bei blanken Halbfeld-Ansichten ausblenden – ruhigere Fläche. */
+export function showsFieldStripes(view: FieldView): boolean {
+  return view !== "half-blank";
 }
 
 export function getEffectiveRotation(view: FieldView, userRotation: FieldRotation): FieldRotation {
@@ -140,6 +150,7 @@ export function nextFieldRotation(current: FieldRotation): FieldRotation {
 export const FIELD_VIEW_LABELS: Record<FieldView, string> = {
   full: "Ganzes Feld",
   half: "Halbes Feld",
+  "half-blank": "Halbfeld blank",
   penalty: "Strafraum",
   free: "Freie Fläche",
 };

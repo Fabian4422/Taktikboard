@@ -12,6 +12,8 @@ import {
   getFieldMarkingArcs,
   getFieldViewport,
   getRotatedViewportSize,
+  showsFieldLines,
+  showsFieldStripes,
 } from "@/lib/tactics-board/fieldLayout";
 
 interface FieldCanvasProps {
@@ -306,16 +308,17 @@ export function FieldCanvas({
                   fillLinearGradientEndPoint={{ x: FIELD_WIDTH, y: FIELD_HEIGHT }}
                   fillLinearGradientColorStops={[0, "#2d8a4e", 0.5, "#358f55", 1, "#2d8a4e"]}
                 />
-                {Array.from({ length: 10 }).map((_, i) => (
-                  <Line
-                    key={`stripe-${i}`}
-                    points={[FIELD_WIDTH * (i / 10), 0, FIELD_WIDTH * (i / 10), FIELD_HEIGHT]}
-                    stroke={i % 2 === 0 ? "rgba(0,0,0,0.04)" : "rgba(255,255,255,0.03)"}
-                    strokeWidth={FIELD_WIDTH / 10}
-                    listening={false}
-                  />
-                ))}
-                {fieldView !== "free" && <FootballFieldLines />}
+                {showsFieldStripes(fieldView) &&
+                  Array.from({ length: 10 }).map((_, i) => (
+                    <Line
+                      key={`stripe-${i}`}
+                      points={[FIELD_WIDTH * (i / 10), 0, FIELD_WIDTH * (i / 10), FIELD_HEIGHT]}
+                      stroke={i % 2 === 0 ? "rgba(0,0,0,0.04)" : "rgba(255,255,255,0.03)"}
+                      strokeWidth={FIELD_WIDTH / 10}
+                      listening={false}
+                    />
+                  ))}
+                {showsFieldLines(fieldView) && <FootballFieldLines />}
 
                 {elements.map((el) => (
                   <BoardElementShape
