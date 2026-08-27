@@ -85,7 +85,7 @@ function even(n: number): number {
   return Math.max(2, n - (n % 2));
 }
 
-/** Skaliert Cover in exakte 16:9-Zielgröße (gerade Pixel für Encoder). */
+/** Letterbox in exakte 16:9-Zielgröße (kein Crop, kein Stauchen). */
 export function fitExactCanvas(
   source: HTMLCanvasElement,
   targetWidth: number,
@@ -103,9 +103,9 @@ export function fitExactCanvas(
   if (!ctx) return source;
   ctx.imageSmoothingEnabled = true;
   ctx.imageSmoothingQuality = "high";
-  ctx.fillStyle = "#166534";
+  ctx.fillStyle = "#0f172a";
   ctx.fillRect(0, 0, width, height);
-  const scale = Math.max(width / Math.max(source.width, 1), height / Math.max(source.height, 1));
+  const scale = Math.min(width / Math.max(source.width, 1), height / Math.max(source.height, 1));
   const dw = source.width * scale;
   const dh = source.height * scale;
   const dx = (width - dw) / 2;

@@ -1,10 +1,10 @@
 "use client";
 
 import type { ReactNode } from "react";
-import type { ElementType, FieldRotation, FieldView, ToolMode } from "@/lib/tactics-board/types";
+import type { ElementType, FieldView, ToolMode } from "@/lib/tactics-board/types";
 import { CONE_COLOR_OPTIONS } from "@/lib/tactics-board/types";
 import { ELEMENT_META } from "@/lib/tactics-board/elementStyles";
-import { FIELD_VIEW_LABELS, getEffectiveRotation } from "@/lib/tactics-board/fieldLayout";
+import { FIELD_VIEW_LABELS } from "@/lib/tactics-board/fieldLayout";
 
 interface ToolbarProps {
   toolMode: ToolMode;
@@ -12,9 +12,7 @@ interface ToolbarProps {
   onDeleteSelected: () => void;
   hasSelection: boolean;
   fieldView: FieldView;
-  fieldRotation: FieldRotation;
   onFieldViewChange: (view: FieldView) => void;
-  onRotateField: () => void;
   playerScalePercent: number;
   onPlayerScalePercentChange: (percent: number) => void;
   coneColor: string;
@@ -121,18 +119,13 @@ export function Toolbar({
   onDeleteSelected,
   hasSelection,
   fieldView,
-  fieldRotation,
   onFieldViewChange,
-  onRotateField,
   playerScalePercent,
   onPlayerScalePercentChange,
   coneColor,
   onConeColorChange,
 }: ToolbarProps) {
   const elements = Object.entries(ELEMENT_META) as [ElementType, (typeof ELEMENT_META)[ElementType]][];
-  const displayedRotation = getEffectiveRotation(fieldView, fieldRotation);
-  const orientation =
-    displayedRotation === 90 || displayedRotation === 270 ? "Hochformat" : "Querformat";
 
   return (
     <aside className="flex w-full flex-col gap-4 lg:w-56 lg:shrink-0">
@@ -150,13 +143,6 @@ export function Toolbar({
             />
           ))}
         </div>
-        <button
-          type="button"
-          onClick={onRotateField}
-          className="mt-2 w-full rounded-lg border border-slate-600 bg-slate-800 px-3 py-2 text-sm text-slate-300 hover:border-slate-500 hover:bg-slate-700"
-        >
-          Feld drehen 90° ({orientation})
-        </button>
       </div>
 
       <div>

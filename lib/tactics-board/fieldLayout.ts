@@ -131,8 +131,9 @@ export function showsFieldStripes(_view: FieldView): boolean {
   return true;
 }
 
-export function getEffectiveRotation(view: FieldView, userRotation: FieldRotation): FieldRotation {
-  return ((getViewBaseRotation(view) + userRotation) % 360) as FieldRotation;
+/** Keine View-/Export-Drehung: Achsen und Objektkoordinaten bleiben unverändert. */
+export function getEffectiveRotation(_view: FieldView, _userRotation: FieldRotation): FieldRotation {
+  return 0;
 }
 
 export function getRotatedViewportSize(viewport: FieldViewport, rotation: FieldRotation) {

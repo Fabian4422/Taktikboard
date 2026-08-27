@@ -16,7 +16,6 @@ import {
   isPlayerType,
   FIELD_HEIGHT,
   FIELD_WIDTH,
-  FIELD_SIZE_FACTOR,
   DEFAULT_PLAYER_SCALE_PERCENT,
   DEFAULT_CONE_COLOR,
   migrateDocumentToCurrentField,
@@ -25,7 +24,7 @@ import {
   type KeyframeSpeed,
   type PlaybackRate,
 } from "@/lib/tactics-board/types";
-import { nextFieldRotation, getViewBaseRotation } from "@/lib/tactics-board/fieldLayout";
+import { nextFieldRotation } from "@/lib/tactics-board/fieldLayout";
 import { createId } from "@/lib/uuid";
 
 const DEFAULT_DOCUMENT: TacticsBoardDocument = {
@@ -36,24 +35,6 @@ const DEFAULT_DOCUMENT: TacticsBoardDocument = {
 };
 
 const LINE_TYPES = new Set(["pass-line", "run-path", "dribble-path", "guide-line"]);
-
-function normalizeRotation(deg: number): number {
-  const n = deg % 360;
-  return n < 0 ? n + 360 : n;
-}
-
-/** Gegenrotation zur View-Basis, damit Material auf dem Bildschirm aufrecht bleibt. */
-function screenUprightRotation(view: FieldView): number {
-  return normalizeRotation(-getViewBaseRotation(view));
-}
-
-function compensateRotatableElements(elements: BoardElement[], baseDelta: number): BoardElement[] {
-  if (baseDelta === 0) return elements;
-  return elements.map((el) => {
-    if (!isRotatable(el.type)) return el;
-    return { ...el, rotation: normalizeRotation((el.rotation ?? 0) - baseDelta) };
-  });
-}
 
 function nextPlayerNumber(
   elements: BoardElement[],
@@ -195,9 +176,9 @@ export function useTacticsBoard(initialDocument?: TacticsBoardDocument) {
         type: toolMode,
         x,
         y,
-        rotation: isRotatable(toolMode) ? screenUprightRotation(fieldView) : undefined,
+        rotation: isRotatable(toolMode) ? 0 : undefined,
         scale: isPlayerType(toolMode)
-          ? (playerScalePercent / 100) * FIELD_SIZE_FACTOR
+          ? playerScalePercent / 100
           : getDefaultScale(toolMode),
         color: toolMode === "cone" ? coneColor : undefined,
       };
@@ -219,7 +200,6 @@ export function useTacticsBoard(initialDocument?: TacticsBoardDocument) {
     [
       coneColor,
       currentKeyframe.elements,
-      fieldView,
       isPlaying,
       lineDraft,
       playerScalePercent,
@@ -275,7 +255,7 @@ export function useTacticsBoard(initialDocument?: TacticsBoardDocument) {
   const setPlayerScalePercent = useCallback((percent: number) => {
     const clamped = Math.max(25, Math.min(200, Math.round(percent)));
     setPlayerScalePercentState(clamped);
-    const scale = (clamped / 100) * FIELD_SIZE_FACTOR;
+    const scale = clamped / 100;
     setDocument((doc) => ({
       ...doc,
       keyframes: doc.keyframes.map((kf) => ({
@@ -309,28 +289,16 @@ export function useTacticsBoard(initialDocument?: TacticsBoardDocument) {
     setFieldRotation((prev) => nextFieldRotation(prev));
   }, []);
 
-  const changeFieldView = useCallback(
-    (next: FieldView) => {
-      if (next === fieldView) return;
-      const baseDelta = getViewBaseRotation(next) - getViewBaseRotation(fieldView);
-      setFieldView(next);
-      if (baseDelta === 0) return;
-      setDocument((doc) => ({
-        ...doc,
-        keyframes: doc.keyframes.map((kf) => ({
-          ...kf,
-          elements: compensateRotatableElements(kf.elements, baseDelta),
-        })),
-      }));
-    },
-    [fieldView],
-  );
+  const changeFieldView = useCallback((next: FieldView) => {
+    // Nur Viewport wechseln — keine Drehung, keine Koordinaten-Änderung.
+    setFieldView(next);
+  }, []);
 
   const applyDocument = useCallback((doc: TacticsBoardDocument) => {
     const migrated = migrateDocumentToCurrentField(doc);
     setDocument(migrated);
     setFieldView(migrated.fieldView ?? "full");
-    setFieldRotation(migrated.fieldRotation ?? 0);
+    setFieldRotation(0);
     setCurrentStepIndex(0);
     setSelectedId(null);
     setIsPlaying(false);

@@ -1,19 +1,23 @@
 import { createId } from "@/lib/uuid";
 
-/** Logisches Spielfeld = natives 16:9 (entspricht Video-Export). */
-export const FIELD_WIDTH = 1920;
-export const FIELD_HEIGHT = 1080;
+/**
+ * Logisches Spielfeld in FIFA-Proportion (105×68).
+ * Koordinaten bleiben unverändert — 16:9 entsteht nur durch Letterboxing.
+ */
+export const FIELD_WIDTH = 1050;
+export const FIELD_HEIGHT = 680;
 
-/** Altes FIFA-Layout — für Koordinaten-Migration bestehender Übungen. */
-export const LEGACY_FIELD_WIDTH = 1050;
-export const LEGACY_FIELD_HEIGHT = 680;
+/** Zwischenzeitlich fälschlich gestrecktes Feldmaß (Migration zurück auf FIFA). */
+export const STRETCHED_FIELD_WIDTH = 1920;
+export const STRETCHED_FIELD_HEIGHT = 1080;
 
-/** Anzeige- und Export-Rahmen (YouTube-tauglich). */
+/** Anzeige- und Export-Rahmen (YouTube-tauglich, Letterbox). */
 export const DISPLAY_ASPECT_RATIO = 16 / 9;
 export const EXPORT_VIDEO_WIDTH = 1920;
 export const EXPORT_VIDEO_HEIGHT = 1080;
 export const EXPORT_GIF_WIDTH = 1280;
 export const EXPORT_GIF_HEIGHT = 720;
+export const LETTERBOX_COLOR = "#0f172a";
 
 export type FieldView = "full" | "half" | "half-blank" | "penalty" | "free";
 export type FieldRotation = 0 | 90 | 180 | 270;
@@ -117,11 +121,6 @@ export const DEFAULT_BALL_SCALE = 0.55;
 export const DEFAULT_PLAYER_SCALE_PERCENT = 100;
 export const DEFAULT_CONE_COLOR = "#f97316";
 
-/** Einheitliche Größenanpassung relativ zum Legacy-Feld (1050×680). */
-export const FIELD_SIZE_FACTOR = Math.sqrt(
-  (FIELD_WIDTH / LEGACY_FIELD_WIDTH) * (FIELD_HEIGHT / LEGACY_FIELD_HEIGHT),
-);
-
 export const CONE_COLOR_OPTIONS: ReadonlyArray<{ label: string; value: string }> = [
   { label: "Orange", value: "#f97316" },
   { label: "Gelb", value: "#eab308" },
@@ -135,9 +134,7 @@ export function isPlayerType(type: ElementType): boolean {
 }
 
 export function getDefaultScale(type: ElementType): number {
-  if (type === "ball") return DEFAULT_BALL_SCALE * FIELD_SIZE_FACTOR;
-  if (LINE_TYPES.has(type)) return 1;
-  return FIELD_SIZE_FACTOR;
+  return type === "ball" ? DEFAULT_BALL_SCALE : 1;
 }
 
 export function getElementScale(element: BoardElement): number {
@@ -178,8 +175,7 @@ export function scaleBoardElement(
   const sy = toH / fromH;
   const sizeFactor = Math.sqrt(sx * sy);
   const prevScale =
-    element.scale ??
-    (element.type === "ball" ? DEFAULT_BALL_SCALE : LINE_TYPES.has(element.type) ? 1 : 1);
+    element.scale ?? (element.type === "ball" ? DEFAULT_BALL_SCALE : 1);
   return {
     ...element,
     x: element.x * sx,
@@ -202,14 +198,15 @@ export function scaleBoardElements(
 }
 
 /**
- * Bringt ein gespeichertes Board auf das aktuelle 16:9-Feldmaß.
- * Alle Objekte werden relativ (prozentual) neu positioniert und skaliert.
+ * Stellt das FIFA-Feldmaß (1050×680) wieder her.
+ * Falls ein Board fälschlich auf 1920×1080 gestreckt wurde, werden
+ * Positionen/Größen proportional zurückgerechnet — ohne Drehung.
  */
 export function migrateDocumentToCurrentField(doc: TacticsBoardDocument): TacticsBoardDocument {
-  const fromW = doc.fieldWidth || LEGACY_FIELD_WIDTH;
-  const fromH = doc.fieldHeight || LEGACY_FIELD_HEIGHT;
+  const fromW = doc.fieldWidth || FIELD_WIDTH;
+  const fromH = doc.fieldHeight || FIELD_HEIGHT;
   if (fromW === FIELD_WIDTH && fromH === FIELD_HEIGHT) {
-    return doc;
+    return { ...doc, fieldWidth: FIELD_WIDTH, fieldHeight: FIELD_HEIGHT };
   }
   return {
     ...doc,
@@ -275,8 +272,8 @@ export function getKeyframeSpeed(keyframe: Keyframe): KeyframeSpeed {
   return keyframe.speed ?? "normal";
 }
 
-/** Feld: Breite ≈ 105 m → Einheiten pro Meter aus aktuellem Feldmaß. */
-const UNITS_PER_METER = FIELD_WIDTH / 105;
+/** Feld: 1050 Einheiten ≈ 105 m → 10 Einheiten = 1 m */
+const UNITS_PER_METER = 10;
 
 /**
  * Referenztempo für die automatische Schritt-Dauer.

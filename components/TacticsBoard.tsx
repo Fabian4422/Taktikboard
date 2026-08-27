@@ -354,9 +354,7 @@ export function TacticsBoard({ exerciseId, initialName }: TacticsBoardProps) {
             onDeleteSelected={board.deleteSelected}
             hasSelection={Boolean(board.selectedId)}
             fieldView={board.fieldView}
-            fieldRotation={board.fieldRotation}
             onFieldViewChange={board.setFieldView}
-            onRotateField={board.rotateField}
             playerScalePercent={board.playerScalePercent}
             onPlayerScalePercentChange={board.setPlayerScalePercent}
             coneColor={board.coneColor}

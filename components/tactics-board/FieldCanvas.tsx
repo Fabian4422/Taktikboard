@@ -5,7 +5,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type Konva from "konva";
 import { BoardElementShape } from "./BoardElementShape";
 import type { BoardElement, FieldRotation, FieldView, ToolMode } from "@/lib/tactics-board/types";
-import { DISPLAY_ASPECT_RATIO, FIELD_HEIGHT, FIELD_WIDTH } from "@/lib/tactics-board/types";
+import { DISPLAY_ASPECT_RATIO, FIELD_HEIGHT, FIELD_WIDTH, LETTERBOX_COLOR } from "@/lib/tactics-board/types";
 import {
   getEffectiveRotation,
   getFieldLayout,
@@ -237,7 +237,7 @@ export function FieldCanvas({
   const rotation = getEffectiveRotation(fieldView, fieldRotation);
   const rotated = getRotatedViewportSize(viewport, rotation);
 
-  // Fester 16:9-Rahmen; Viewport proportional einpassen (Contain, kein Abschneiden).
+  // Fester 16:9-Rahmen; Spielfeld zentriert per Letterbox (kein Crop, kein Stauchen).
   let stageW: number;
   let stageH: number;
   if (fillParent && containerH > 0) {
@@ -253,6 +253,7 @@ export function FieldCanvas({
     stageH = containerW / DISPLAY_ASPECT_RATIO;
   }
 
+  // Uniforme Skalierung: Seitenverhältnis des Viewports bleibt erhalten.
   const scale = Math.min(stageW / Math.max(rotated.w, 1), stageH / Math.max(rotated.h, 1));
   const logicalW = stageW / scale;
   const logicalH = stageH / scale;
@@ -303,13 +304,13 @@ export function FieldCanvas({
           style={{ cursor: preview ? "default" : toolMode !== "select" && !isPlaying ? "crosshair" : "default" }}
         >
           <Layer listening={!preview}>
-            {/* Rasen-Hintergrund füllt den 16:9-Rahmen (auch bei Halbfeld-Contain). */}
+            {/* Letterbox-Hintergrund (16:9), Feld zentriert ohne Stauchen/Drehen */}
             <Rect
               x={0}
               y={0}
               width={logicalW}
               height={logicalH}
-              fill="#277a43"
+              fill={LETTERBOX_COLOR}
               listening={false}
             />
             <Group x={contentOffsetX} y={contentOffsetY}>
