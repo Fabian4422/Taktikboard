@@ -15,6 +15,7 @@ interface ToolbarProps {
   fieldRotation: FieldRotation;
   onFieldViewChange: (view: FieldView) => void;
   onRotateField: () => void;
+  onClearBoard: () => void;
   playerScalePercent: number;
   onPlayerScalePercentChange: (percent: number) => void;
   coneColor: string;
@@ -124,6 +125,7 @@ export function Toolbar({
   fieldRotation,
   onFieldViewChange,
   onRotateField,
+  onClearBoard,
   playerScalePercent,
   onPlayerScalePercentChange,
   coneColor,
@@ -143,9 +145,16 @@ export function Toolbar({
         <button
           type="button"
           onClick={onRotateField}
-          className="mb-2 w-full rounded-lg border border-slate-600 bg-slate-800 px-3 py-2 text-sm text-slate-300 hover:border-slate-500 hover:bg-slate-700"
+          className="mb-2 w-full rounded-lg border border-emerald-500/40 bg-emerald-500/10 px-3 py-2 text-sm font-medium text-emerald-300 hover:border-emerald-400 hover:bg-emerald-500/20"
         >
           Spielfeld drehen (90°) · {orientation}
+        </button>
+        <button
+          type="button"
+          onClick={onClearBoard}
+          className="mb-2 w-full rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm font-medium text-amber-300 hover:border-amber-400 hover:bg-amber-500/20"
+        >
+          Neues Board / Spielfeld leeren
         </button>
         <div className="flex flex-wrap gap-2 lg:flex-col">
           {(Object.keys(FIELD_VIEW_LABELS) as FieldView[]).map((view) => (

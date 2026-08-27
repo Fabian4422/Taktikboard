@@ -60,7 +60,7 @@ export function useTacticsBoard(initialDocument?: TacticsBoardDocument) {
   const [displayElements, setDisplayElements] = useState<BoardElement[]>([]);
   const [fieldView, setFieldView] = useState<FieldView>(initialDocument?.fieldView ?? "full");
   const [fieldRotation, setFieldRotation] = useState<FieldRotation>(
-    initialDocument?.fieldRotation ?? 90,
+    initialDocument?.fieldRotation ?? 0,
   );
   const [playerScalePercent, setPlayerScalePercentState] = useState(DEFAULT_PLAYER_SCALE_PERCENT);
   const [coneColor, setConeColor] = useState(DEFAULT_CONE_COLOR);
@@ -286,8 +286,34 @@ export function useTacticsBoard(initialDocument?: TacticsBoardDocument) {
   }, [isPlaying]);
 
   const rotateField = useCallback(() => {
+    // 90° im Uhrzeigersinn — nur Darstellung, Element-Koordinaten bleiben gleich
     setFieldRotation((prev) => nextFieldRotation(prev));
   }, []);
+
+  const clearBoard = useCallback(() => {
+    if (isPlaying) return;
+    const confirmed =
+      typeof window !== "undefined" &&
+      window.confirm("Wirklich alles löschen? Alle Spieler, Materialien und Linien werden entfernt.");
+    if (!confirmed) return;
+
+    setDocument((prev) => ({
+      ...prev,
+      keyframes: [createEmptyKeyframe(1)],
+    }));
+    setCurrentStepIndex(0);
+    setSelectedId(null);
+    setLineDraft(null);
+    setToolMode("select");
+    setIsPlaying(false);
+    setIsPaused(false);
+    setPlaybackProgress(0);
+    timelineElapsedRef.current = 0;
+    lastFrameRef.current = null;
+    if (animationRef.current) {
+      cancelAnimationFrame(animationRef.current);
+    }
+  }, [isPlaying]);
 
   const changeFieldView = useCallback((next: FieldView) => {
     // Nur Viewport wechseln — keine Drehung, keine Koordinaten-Änderung.
@@ -298,7 +324,7 @@ export function useTacticsBoard(initialDocument?: TacticsBoardDocument) {
     const migrated = migrateDocumentToCurrentField(doc);
     setDocument(migrated);
     setFieldView(migrated.fieldView ?? "full");
-    setFieldRotation(migrated.fieldRotation ?? 90);
+    setFieldRotation(migrated.fieldRotation ?? 0);
     setCurrentStepIndex(0);
     setSelectedId(null);
     setIsPlaying(false);
@@ -456,6 +482,7 @@ export function useTacticsBoard(initialDocument?: TacticsBoardDocument) {
     setFieldView: changeFieldView,
     fieldRotation,
     rotateField,
+    clearBoard,
     playerScalePercent,
     setPlayerScalePercent,
     coneColor,
