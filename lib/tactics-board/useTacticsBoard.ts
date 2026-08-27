@@ -20,7 +20,7 @@ import {
   type KeyframeSpeed,
   type PlaybackRate,
 } from "@/lib/tactics-board/types";
-import { nextFieldRotation } from "@/lib/tactics-board/fieldLayout";
+import { nextFieldRotation, getViewBaseRotation } from "@/lib/tactics-board/fieldLayout";
 import { createId } from "@/lib/uuid";
 
 const DEFAULT_DOCUMENT: TacticsBoardDocument = {
@@ -31,6 +31,24 @@ const DEFAULT_DOCUMENT: TacticsBoardDocument = {
 };
 
 const LINE_TYPES = new Set(["pass-line", "run-path", "dribble-path", "guide-line"]);
+
+function normalizeRotation(deg: number): number {
+  const n = deg % 360;
+  return n < 0 ? n + 360 : n;
+}
+
+/** Gegenrotation zur View-Basis, damit Material auf dem Bildschirm aufrecht bleibt. */
+function screenUprightRotation(view: FieldView): number {
+  return normalizeRotation(-getViewBaseRotation(view));
+}
+
+function compensateRotatableElements(elements: BoardElement[], baseDelta: number): BoardElement[] {
+  if (baseDelta === 0) return elements;
+  return elements.map((el) => {
+    if (!isRotatable(el.type)) return el;
+    return { ...el, rotation: normalizeRotation((el.rotation ?? 0) - baseDelta) };
+  });
+}
 
 function nextPlayerNumber(elements: BoardElement[], type: "player-a" | "player-b"): number {
   const numbers = elements
@@ -167,7 +185,7 @@ export function useTacticsBoard(initialDocument?: TacticsBoardDocument) {
         type: toolMode,
         x,
         y,
-        rotation: isRotatable(toolMode) ? 0 : undefined,
+        rotation: isRotatable(toolMode) ? screenUprightRotation(fieldView) : undefined,
         scale: getDefaultScale(toolMode),
       };
 
@@ -181,7 +199,7 @@ export function useTacticsBoard(initialDocument?: TacticsBoardDocument) {
       setSelectedId(base.id);
       setToolMode("select");
     },
-    [currentKeyframe.elements, isPlaying, lineDraft, toolMode, updateCurrentElements],
+    [currentKeyframe.elements, fieldView, isPlaying, lineDraft, toolMode, updateCurrentElements],
   );
 
   const addKeyframe = useCallback(() => {
@@ -249,6 +267,23 @@ export function useTacticsBoard(initialDocument?: TacticsBoardDocument) {
   const rotateField = useCallback(() => {
     setFieldRotation((prev) => nextFieldRotation(prev));
   }, []);
+
+  const changeFieldView = useCallback(
+    (next: FieldView) => {
+      if (next === fieldView) return;
+      const baseDelta = getViewBaseRotation(next) - getViewBaseRotation(fieldView);
+      setFieldView(next);
+      if (baseDelta === 0) return;
+      setDocument((doc) => ({
+        ...doc,
+        keyframes: doc.keyframes.map((kf) => ({
+          ...kf,
+          elements: compensateRotatableElements(kf.elements, baseDelta),
+        })),
+      }));
+    },
+    [fieldView],
+  );
 
   const applyDocument = useCallback((doc: TacticsBoardDocument) => {
     setDocument(doc);
@@ -408,7 +443,7 @@ export function useTacticsBoard(initialDocument?: TacticsBoardDocument) {
     deleteSelected,
     rotateSelected,
     fieldView,
-    setFieldView,
+    setFieldView: changeFieldView,
     fieldRotation,
     rotateField,
     startPlayback,

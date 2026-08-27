@@ -76,6 +76,7 @@ export const ROTATABLE_TYPES: ReadonlySet<ElementType> = new Set([
   "mini-goal",
   "big-goal",
   "hurdle",
+  "cone",
 ]);
 
 export function isRotatable(type: ElementType): boolean {

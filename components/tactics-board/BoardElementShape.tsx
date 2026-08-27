@@ -193,8 +193,11 @@ export function BoardElementShape({
 
     case "cone":
       return (
-        <Group {...commonGroupProps}>
-          <ConeIcon selected={selected} />
+        <Group>
+          <Group {...commonGroupProps}>
+            <ConeIcon selected={selected} />
+          </Group>
+          {transformer}
         </Group>
       );
 
