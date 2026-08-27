@@ -10,7 +10,6 @@
   },
   "dependencies": {
     "@ducanh2912/next-pwa": "^10.2.9",
-    "@next/swc-win32-x64-msvc": "^15.5.23",
     "@supabase/supabase-js": "^2.112.3",
     "gifenc": "^1.0.3",
     "konva": "^9.3.20",
