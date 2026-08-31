@@ -2,7 +2,6 @@
 
 import dynamic from "next/dynamic";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { flushSync } from "react-dom";
 import { useRouter } from "next/navigation";
 import type Konva from "konva";
 import { Toolbar } from "./tactics-board/Toolbar";
@@ -16,13 +15,13 @@ import {
   isSupabaseConfigured,
 } from "@/lib/tactics-board/supabase";
 import { exportTacticsAnimation, type ExportFormat } from "@/lib/tactics-board/exportAnimation";
+import { FIELD_HEIGHT, FIELD_WIDTH } from "@/lib/tactics-board/types";
 import {
-  EXPORT_VIDEO_HEIGHT,
-  EXPORT_VIDEO_WIDTH,
-  FIELD_HEIGHT,
-  FIELD_WIDTH,
-  type BoardElement,
-} from "@/lib/tactics-board/types";
+  notifyExportComplete,
+  requestExportNotificationPermission,
+  restoreTabTitle,
+  setExportTabTitle,
+} from "@/lib/tactics-board/exportNotifications";
 import { ExerciseLibraryModal } from "./tactics-board/ExerciseLibraryModal";
 
 const FieldCanvas = dynamic(
@@ -47,21 +46,20 @@ export function TacticsBoard({ exerciseId, initialName }: TacticsBoardProps) {
   const board = useTacticsBoard();
   const { applyDocument } = board;
   const stageRef = useRef<Konva.Stage | null>(null);
-  const exportStageRef = useRef<Konva.Stage | null>(null);
   const previewRef = useRef<HTMLDivElement>(null);
   const [saveStatus, setSaveStatus] = useState<string | null>(null);
   const [boardName, setBoardName] = useState(initialName ?? "Neues Taktikboard");
   const [isLoading, setIsLoading] = useState(Boolean(exerciseId));
   const [loadError, setLoadError] = useState<string | null>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
-  const [exportStageMounted, setExportStageMounted] = useState(false);
-  const [exportOverride, setExportOverride] = useState<BoardElement[] | null>(null);
   const [exportState, setExportState] = useState<{
     label: string;
     percent: number;
   } | null>(null);
   const [libraryOpen, setLibraryOpen] = useState(false);
-  const sceneReadyRef = useRef<(() => void) | null>(null);
+  const pageTitleRef = useRef(
+    typeof document === "undefined" ? "Taktikboard" : document.title,
+  );
 
   useEffect(() => {
     if (!exerciseId || !isSupabaseConfigured()) {
@@ -204,64 +202,42 @@ export function TacticsBoard({ exerciseId, initialName }: TacticsBoardProps) {
   const canPlay = board.document.keyframes.length >= 2;
   const isExporting = Boolean(exportState);
 
-  const waitForExportStage = useCallback(async () => {
-    const deadline = performance.now() + 4000;
-    while (performance.now() < deadline) {
-      const stage = exportStageRef.current;
-      if (stage && stage.width() > 0 && stage.height() > 0) return stage;
-      await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+  useEffect(() => {
+    if (!exportState) {
+      restoreTabTitle(pageTitleRef.current);
+      return;
     }
-    throw new Error("Export-Canvas ist noch nicht bereit.");
+    setExportTabTitle(exportState.percent);
+  }, [exportState]);
+
+  useEffect(() => {
+    return () => restoreTabTitle(pageTitleRef.current);
   }, []);
 
   const handleExport = useCallback(
     async (format: ExportFormat) => {
       if (isExporting || board.document.keyframes.length < 2) return;
-      const liveStage = stageRef.current;
-      if (!liveStage) {
-        setExportState({ label: "Spielfeld ist noch nicht bereit.", percent: 0 });
-        window.setTimeout(() => setExportState(null), 2500);
-        return;
-      }
 
       board.stopPlayback();
-      const startLabel = format === "gif" ? "GIF wird erstellt…" : "Video wird erstellt…";
-      // Offscreen-Stage in 1920×1080 (16:9) mounten — Hauptboard bleibt unverändert
-      setExportStageMounted(true);
-      setExportOverride(board.elementsToRender);
+      const startLabel = format === "gif" ? "GIF wird gerendert" : "Video wird gerendert";
+      pageTitleRef.current = document.title;
       setExportState({ label: startLabel, percent: 0 });
+      setExportTabTitle(0);
+      void requestExportNotificationPermission();
 
       try {
-        const stage = await waitForExportStage();
         const result = await exportTacticsAnimation({
           keyframes: board.document.keyframes,
-          stage,
+          fieldView: board.fieldView,
+          fieldRotation: board.fieldRotation,
           format,
           fileBaseName: boardName,
           onProgress: (percent, label) => {
             setExportState({ label, percent });
-          },
-          renderFrame: async (elements) => {
-            await new Promise<void>((resolve) => {
-              let settled = false;
-              const done = () => {
-                if (settled) return;
-                settled = true;
-                sceneReadyRef.current = null;
-                resolve();
-              };
-              sceneReadyRef.current = done;
-              flushSync(() => {
-                setExportOverride(elements);
-              });
-              queueMicrotask(() => {
-                if (settled) return;
-                exportStageRef.current?.batchDraw();
-                done();
-              });
-            });
+            setExportTabTitle(percent);
           },
         });
+        notifyExportComplete(result.usedGifFallback ? "gif" : format);
         if (result.usedGifFallback) {
           setSaveStatus("Video nicht unterstützt – GIF wurde gespeichert.");
           window.setTimeout(() => setSaveStatus(null), 4000);
@@ -271,12 +247,11 @@ export function TacticsBoard({ exerciseId, initialName }: TacticsBoardProps) {
         setExportState({ label: message, percent: 0 });
         await new Promise((resolve) => window.setTimeout(resolve, 2800));
       } finally {
-        setExportOverride(null);
-        setExportStageMounted(false);
+        restoreTabTitle(pageTitleRef.current);
         setExportState(null);
       }
     },
-    [board, boardName, isExporting, waitForExportStage],
+    [board, boardName, isExporting],
   );
 
   if (isLoading) {
@@ -293,7 +268,14 @@ export function TacticsBoard({ exerciseId, initialName }: TacticsBoardProps) {
       {!isFullscreen && (
         <header className="flex flex-wrap items-center justify-between gap-4">
           <div>
-            <h1 className="text-2xl font-bold text-white">Taktikboard</h1>
+            <div className="flex items-center gap-3">
+              <h1 className="text-2xl font-bold text-white">Taktikboard</h1>
+              {isExporting && exportState && (
+                <span className="rounded-full bg-emerald-500 px-2.5 py-0.5 text-xs font-bold text-slate-950">
+                  {Math.round(exportState.percent)}%
+                </span>
+              )}
+            </div>
             <p className="text-sm text-slate-400">
               Übungen visualisieren, animieren und als Video/GIF exportieren
             </p>
@@ -400,8 +382,8 @@ export function TacticsBoard({ exerciseId, initialName }: TacticsBoardProps) {
             <div
               className={
                 isFullscreen
-                  ? "flex min-h-0 flex-1 flex-col"
-                  : "aspect-video w-full min-w-0"
+                  ? "relative flex min-h-0 flex-1 flex-col"
+                  : "relative aspect-video w-full min-w-0"
               }
             >
               <FieldCanvas
@@ -421,41 +403,36 @@ export function TacticsBoard({ exerciseId, initialName }: TacticsBoardProps) {
                 fillParent
                 preview={isFullscreen || isExporting}
               />
+              {isExporting && exportState && (
+                <div className="absolute inset-0 z-20 flex items-center justify-center bg-slate-950/75 p-4">
+                  <div
+                    className="w-[min(28rem,100%)] rounded-2xl border border-emerald-400/40 bg-slate-900 p-6 shadow-2xl"
+                    role="status"
+                    aria-live="polite"
+                  >
+                    <div className="mb-4 flex items-center justify-between gap-3">
+                      <p className="text-sm font-medium text-emerald-100">
+                        {exportState.label}: {Math.round(exportState.percent)}%
+                      </p>
+                      <span className="rounded-full bg-emerald-500 px-3 py-1 text-sm font-bold text-slate-950">
+                        {Math.round(exportState.percent)}%
+                      </span>
+                    </div>
+                    <div className="h-3 overflow-hidden rounded-full bg-slate-800">
+                      <div
+                        className="h-full bg-emerald-500 transition-[width] duration-150"
+                        style={{
+                          width: `${Math.min(100, Math.max(0, exportState.percent))}%`,
+                        }}
+                      />
+                    </div>
+                    <p className="mt-3 text-xs text-slate-400">
+                      Der Export läuft im Hintergrund weiter – du kannst den Tab minimieren.
+                    </p>
+                  </div>
+                </div>
+              )}
             </div>
-
-            {/* Versteckte Export-Stage: fest 1920×1080 (16:9) für YouTube */}
-            {isExporting && exportStageMounted && (
-              <div
-                aria-hidden
-                className="pointer-events-none fixed overflow-hidden opacity-0"
-                style={{
-                  left: -10000,
-                  top: 0,
-                  width: EXPORT_VIDEO_WIDTH,
-                  height: EXPORT_VIDEO_HEIGHT,
-                }}
-              >
-                <FieldCanvas
-                  stageRef={exportStageRef}
-                  width={EXPORT_VIDEO_WIDTH}
-                  height={EXPORT_VIDEO_HEIGHT}
-                  elements={exportOverride ?? board.elementsToRender}
-                  selectedId={null}
-                  toolMode="select"
-                  lineDraft={null}
-                  isPlaying={false}
-                  onSelect={() => undefined}
-                  onElementMove={() => undefined}
-                  onLineMove={() => undefined}
-                  onFieldClick={() => undefined}
-                  fieldView={board.fieldView}
-                  fieldRotation={board.fieldRotation}
-                  fillParent
-                  preview
-                  sceneReadyRef={sceneReadyRef}
-                />
-              </div>
-            )}
           </div>
 
           {!isFullscreen && (

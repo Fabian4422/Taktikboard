@@ -186,14 +186,19 @@ export function Timeline({
       </div>
 
       {isExporting && (
-        <div className="mt-3 rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-3">
-          <div className="mb-2 flex items-center gap-2 text-sm text-emerald-200">
-            <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-emerald-300 border-t-transparent" />
-            <span>
-              {exportLabel ?? "Export läuft…"} {Math.round(exportPercent)}%
+        <div className="mt-3 rounded-lg border border-emerald-500/40 bg-emerald-500/10 p-4">
+          <div className="mb-2 flex items-center justify-between gap-3 text-sm text-emerald-100">
+            <span className="flex items-center gap-2">
+              <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-emerald-300 border-t-transparent" />
+              <span>
+                {exportLabel ?? "Export läuft"}: {Math.round(exportPercent)}%
+              </span>
+            </span>
+            <span className="rounded-full bg-emerald-500 px-2.5 py-0.5 text-xs font-bold text-slate-950">
+              {Math.round(exportPercent)}%
             </span>
           </div>
-          <div className="h-2 overflow-hidden rounded-full bg-slate-800">
+          <div className="h-3 overflow-hidden rounded-full bg-slate-800">
             <div
               className="h-full bg-emerald-500 transition-[width] duration-150"
               style={{ width: `${Math.min(100, Math.max(0, exportPercent))}%` }}
