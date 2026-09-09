@@ -324,7 +324,7 @@ export function useTacticsBoard(initialDocument?: TacticsBoardDocument) {
         scale: isPlayerType(toolMode)
           ? playerScalePercent / 100
           : getDefaultScale(toolMode),
-        color: toolMode === "cone" ? coneColor : undefined,
+        color: toolMode === "cone" || toolMode === "dummy" ? coneColor : undefined,
       };
 
       if (toolMode === "player-a") {

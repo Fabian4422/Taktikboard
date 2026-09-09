@@ -13,8 +13,10 @@ import {
 } from "@/lib/tactics-board/elementStyles";
 import {
   ConeIcon,
+  DummyIcon,
   GoalIcon,
   HurdleIcon,
+  PoleIcon,
   SoccerBallIcon,
 } from "./equipmentShapes";
 
@@ -203,11 +205,28 @@ export function BoardElementShape({
         </Group>
       );
 
+    case "pole":
+      return (
+        <Group {...commonGroupProps}>
+          <PoleIcon selected={selected} />
+        </Group>
+      );
+
     case "hurdle":
       return (
         <Group>
           <Group {...commonGroupProps}>
             <HurdleIcon selected={selected} />
+          </Group>
+          {transformer}
+        </Group>
+      );
+
+    case "dummy":
+      return (
+        <Group>
+          <Group {...commonGroupProps}>
+            <DummyIcon selected={selected} color={element.color} />
           </Group>
           {transformer}
         </Group>

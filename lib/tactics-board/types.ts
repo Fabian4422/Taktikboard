@@ -23,7 +23,14 @@ export type FieldView = "full" | "half" | "half-blank" | "penalty" | "free";
 export type FieldRotation = 0 | 90 | 180 | 270;
 
 export type PlayerType = "player-a" | "player-b" | "player-c" | "player-d" | "player-gk";
-export type EquipmentType = "cone" | "hurdle" | "mini-goal" | "big-goal" | "ball";
+export type EquipmentType =
+  | "cone"
+  | "pole"
+  | "hurdle"
+  | "dummy"
+  | "mini-goal"
+  | "big-goal"
+  | "ball";
 export type DrawingType = "pass-line" | "run-path" | "dribble-path" | "guide-line";
 
 export type ElementType = PlayerType | EquipmentType | DrawingType;
@@ -95,6 +102,7 @@ export const ROTATABLE_TYPES: ReadonlySet<ElementType> = new Set([
   "big-goal",
   "hurdle",
   "cone",
+  "dummy",
 ]);
 
 export function isRotatable(type: ElementType): boolean {

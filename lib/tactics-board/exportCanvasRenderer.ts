@@ -28,8 +28,11 @@ import {
   BALL_RADIUS,
   BALL_SEAMS,
   BIG_GOAL,
+  CONE_TRIANGLE,
+  DUMMY,
   HURDLE,
   MINI_GOAL,
+  POLE,
   type GoalGeometry,
 } from "./equipmentGeometry";
 
@@ -57,16 +60,18 @@ function fillPolyline(ctx: ExportDrawContext, points: number[]) {
 function getConePalette(color: string) {
   switch (color.toLowerCase()) {
     case "#eab308":
-      return { fill: "#eab308", stroke: "#a16207", stripe: "#fde047", tip: "#fefce8" };
+      return { fill: "#eab308", stroke: "#a16207" };
     case "#3b82f6":
-      return { fill: "#3b82f6", stroke: "#1d4ed8", stripe: "#93c5fd", tip: "#eff6ff" };
+      return { fill: "#3b82f6", stroke: "#1d4ed8" };
     case "#ef4444":
-      return { fill: "#ef4444", stroke: "#b91c1c", stripe: "#fca5a5", tip: "#fef2f2" };
+      return { fill: "#ef4444", stroke: "#b91c1c" };
     case "#f8fafc":
-      return { fill: "#f8fafc", stroke: "#64748b", stripe: "#e2e8f0", tip: "#ffffff" };
+      return { fill: "#f8fafc", stroke: "#64748b" };
+    case "#22c55e":
+      return { fill: "#22c55e", stroke: "#15803d" };
     case "#f97316":
     default:
-      return { fill: "#f97316", stroke: "#c2410c", stripe: "#fdba74", tip: "#fff7ed" };
+      return { fill: "#f97316", stroke: "#c2410c" };
   }
 }
 
@@ -198,142 +203,120 @@ function drawFieldLines(ctx: ExportDrawContext) {
 }
 
 function drawGoal(ctx: ExportDrawContext, geo: GoalGeometry) {
-  const isBig = geo === BIG_GOAL;
-  const jointR = isBig ? 3.2 : 2.2;
   const postFill = "#f8fafc";
-  const postStroke = "#94a3b8";
+  const postStroke = "#e2e8f0";
 
-  ctx.fillStyle = "rgba(15,23,42,0.16)";
-  ctx.fillRect(-geo.depth, -geo.halfWidth, geo.depth, geo.halfWidth * 2);
-
-  ctx.fillStyle = "rgba(248,250,252,0.18)";
+  ctx.fillStyle = "rgba(248,250,252,0.14)";
   fillPolyline(ctx, geo.netFill);
 
-  ctx.strokeStyle = "rgba(226,232,240,0.7)";
-  ctx.lineWidth = 0.7;
+  ctx.strokeStyle = "rgba(226,232,240,0.75)";
+  ctx.lineWidth = 0.65;
   for (const pts of geo.netLines) {
     strokePolyline(ctx, pts);
     ctx.stroke();
   }
 
-  ctx.lineCap = "round";
-  ctx.lineJoin = "round";
+  ctx.lineCap = "square";
+  ctx.lineJoin = "miter";
   for (const line of geo.frameLines) {
-    ctx.strokeStyle = postStroke;
-    ctx.lineWidth = line.width + 1.8;
+    ctx.strokeStyle = "#64748b";
+    ctx.lineWidth = line.width + 1.4;
     strokePolyline(ctx, line.points);
     ctx.stroke();
   }
-  for (const line of geo.frameLines) {
-    ctx.strokeStyle = postFill;
+  for (let i = 0; i < geo.frameLines.length; i++) {
+    const line = geo.frameLines[i];
+    ctx.strokeStyle = i === 0 ? postFill : postStroke;
     ctx.lineWidth = line.width;
     strokePolyline(ctx, line.points);
     ctx.stroke();
   }
-
-  ctx.fillStyle = postFill;
-  ctx.strokeStyle = postStroke;
-  ctx.lineWidth = 1;
-  ctx.beginPath();
-  ctx.arc(geo.frontLeft.x, geo.frontLeft.y, jointR, 0, Math.PI * 2);
-  ctx.fill();
+  ctx.strokeStyle = postFill;
+  ctx.lineWidth = geo.postWidth + 0.6;
+  strokePolyline(ctx, [geo.frontLeft.x, geo.frontLeft.y, geo.frontRight.x, geo.frontRight.y]);
   ctx.stroke();
-  ctx.beginPath();
-  ctx.arc(geo.frontRight.x, geo.frontRight.y, jointR, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.stroke();
-  ctx.fillStyle = "#e2e8f0";
-  ctx.beginPath();
-  ctx.arc(geo.backLeft.x, geo.backLeft.y, jointR * 0.75, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.beginPath();
-  ctx.arc(geo.backRight.x, geo.backRight.y, jointR * 0.75, 0, Math.PI * 2);
-  ctx.fill();
 }
 
 function drawHurdle(ctx: ExportDrawContext) {
-  const { halfW, postH, barY, footW, footH, postW, stripeH, stripeCount } = HURDLE;
-  const postX = halfW - 4;
-
-  const drawPost = (x: number) => {
-    ctx.save();
-    ctx.translate(x, 0);
-    ctx.fillStyle = "#111827";
-    ctx.fillRect(-postW / 2, -postH, postW, postH);
-    for (let i = 0; i < stripeCount; i++) {
-      if (i % 2 !== 0) continue;
-      ctx.fillStyle = "#facc15";
-      ctx.fillRect(-postW / 2, -postH + i * stripeH, postW, stripeH);
-    }
-    ctx.fillStyle = "#1f2937";
-    ctx.fillRect(-footW / 2, -footH / 2, footW, footH);
-    ctx.restore();
-  };
-
-  drawPost(-postX);
-  drawPost(postX);
-
+  const { halfSpan, barWidth, footLen, footWidth } = HURDLE;
   ctx.lineCap = "round";
-  ctx.lineJoin = "round";
-  ctx.strokeStyle = "#ea580c";
-  ctx.lineWidth = 4.2;
-  strokePolyline(ctx, [-postX, barY + 6, -postX + 4, barY, postX - 4, barY, postX, barY + 6]);
+  ctx.strokeStyle = "#1e293b";
+  ctx.lineWidth = barWidth + 0.8;
+  strokePolyline(ctx, [-halfSpan, 0, halfSpan, 0]);
   ctx.stroke();
-  ctx.strokeStyle = "#fbbf24";
-  ctx.lineWidth = 2;
-  strokePolyline(ctx, [
-    -postX + 1,
-    barY + 7,
-    -postX + 5,
-    barY + 1.5,
-    postX - 5,
-    barY + 1.5,
-    postX - 1,
-    barY + 7,
-  ]);
+  ctx.strokeStyle = "#facc15";
+  ctx.lineWidth = barWidth;
+  strokePolyline(ctx, [-halfSpan, 0, halfSpan, 0]);
+  ctx.stroke();
+
+  ctx.fillStyle = "#facc15";
+  ctx.strokeStyle = "#1e293b";
+  ctx.lineWidth = 1.2;
+  ctx.beginPath();
+  ctx.rect(-halfSpan - footWidth / 2, -footLen / 2, footWidth, footLen);
+  ctx.fill();
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.rect(halfSpan - footWidth / 2, -footLen / 2, footWidth, footLen);
+  ctx.fill();
   ctx.stroke();
 }
 
 function drawCone(ctx: ExportDrawContext, color?: string) {
   const palette = getConePalette(color ?? "#f97316");
-  ctx.fillStyle = "rgba(15,23,42,0.25)";
-  ctx.beginPath();
-  ctx.ellipse(0, 8, 10, 4, 0, 0, Math.PI * 2);
-  ctx.fill();
-
   ctx.fillStyle = palette.fill;
-  fillPolyline(ctx, [0, -14, 11, 8, -11, 8]);
-
-  ctx.strokeStyle = palette.stripe;
-  ctx.lineWidth = 2.5;
-  ctx.beginPath();
-  ctx.moveTo(-5, 1);
-  ctx.lineTo(5, 1);
-  ctx.stroke();
-  ctx.strokeStyle = palette.tip;
-  ctx.lineWidth = 2;
-  ctx.beginPath();
-  ctx.moveTo(-3.5, -6);
-  ctx.lineTo(3.5, -6);
-  ctx.stroke();
-
   ctx.strokeStyle = palette.stroke;
   ctx.lineWidth = 1.4;
-  strokePolyline(ctx, [0, -14, 11, 8, -11, 8], true);
+  fillPolyline(ctx, CONE_TRIANGLE);
+  strokePolyline(ctx, CONE_TRIANGLE, true);
+  ctx.stroke();
+}
+
+function drawPole(ctx: ExportDrawContext) {
+  const { radius, plusHalf, stroke } = POLE;
+  ctx.fillStyle = "#f8fafc";
+  ctx.strokeStyle = "#0f172a";
+  ctx.lineWidth = stroke;
+  ctx.beginPath();
+  ctx.arc(0, 0, radius, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.stroke();
+  ctx.lineCap = "round";
+  ctx.beginPath();
+  ctx.moveTo(-plusHalf, 0);
+  ctx.lineTo(plusHalf, 0);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(0, -plusHalf);
+  ctx.lineTo(0, plusHalf);
+  ctx.stroke();
+}
+
+function drawDummy(ctx: ExportDrawContext, color?: string) {
+  const palette = getConePalette(color ?? "#eab308");
+  ctx.fillStyle = palette.fill;
+  ctx.strokeStyle = palette.stroke;
+  ctx.lineWidth = 1.4;
+
+  ctx.beginPath();
+  ctx.ellipse(0, 0, DUMMY.bodyRx, DUMMY.bodyRy, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.stroke();
+
+  ctx.beginPath();
+  ctx.ellipse(0, DUMMY.shoulderY, DUMMY.shoulderRx, DUMMY.shoulderRy, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.stroke();
+
+  ctx.lineWidth = 1.1;
+  ctx.beginPath();
+  ctx.arc(0, -DUMMY.bodyRy + 1, 3.2, 0, Math.PI * 2);
+  ctx.fill();
   ctx.stroke();
 }
 
 function drawBall(ctx: ExportDrawContext) {
-  ctx.save();
-  ctx.beginPath();
-  ctx.arc(0, 0, BALL_RADIUS, 0, Math.PI * 2);
-  ctx.clip();
-
-  const gradient = ctx.createRadialGradient(-4, -5, 1, 0, 0, BALL_RADIUS);
-  gradient.addColorStop(0, "#ffffff");
-  gradient.addColorStop(0.55, "#f1f5f9");
-  gradient.addColorStop(1, "#cbd5e1");
-  ctx.fillStyle = gradient;
+  ctx.fillStyle = "#f8fafc";
   ctx.beginPath();
   ctx.arc(0, 0, BALL_RADIUS, 0, Math.PI * 2);
   ctx.fill();
@@ -345,21 +328,20 @@ function drawBall(ctx: ExportDrawContext) {
   }
 
   ctx.strokeStyle = "#1e293b";
-  ctx.lineWidth = 0.9;
+  ctx.lineWidth = 0.85;
   for (const pts of BALL_HEXAGONS) {
     strokePolyline(ctx, pts, true);
     ctx.stroke();
   }
   ctx.strokeStyle = "#334155";
-  ctx.lineWidth = 0.7;
+  ctx.lineWidth = 0.65;
   for (const pts of BALL_SEAMS) {
     strokePolyline(ctx, pts);
     ctx.stroke();
   }
-  ctx.restore();
 
   ctx.strokeStyle = "#1e293b";
-  ctx.lineWidth = 1.4;
+  ctx.lineWidth = 1.3;
   ctx.beginPath();
   ctx.arc(0, 0, BALL_RADIUS, 0, Math.PI * 2);
   ctx.stroke();
@@ -440,8 +422,14 @@ function drawMarkerElement(
     case "cone":
       drawCone(ctx, element.color);
       break;
+    case "pole":
+      drawPole(ctx);
+      break;
     case "hurdle":
       drawHurdle(ctx);
+      break;
+    case "dummy":
+      drawDummy(ctx, element.color);
       break;
     case "mini-goal":
       drawGoal(ctx, MINI_GOAL);

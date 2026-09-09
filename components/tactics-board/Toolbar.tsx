@@ -30,45 +30,62 @@ function MaterialIcon({ type, color }: { type: ElementType; color?: string }) {
       return (
         <svg viewBox="0 0 16 16" className="h-4 w-4 shrink-0" aria-hidden>
           <circle cx="8" cy="8" r="7" fill="#f8fafc" stroke="#1e293b" strokeWidth="1" />
-          <polygon points="8,4.6 10.2,6.2 9.4,8.8 6.6,8.8 5.8,6.2" fill="#0f172a" />
+          <polygon points="8,4.8 10,6.2 9.3,8.6 6.7,8.6 6,6.2" fill="#0f172a" />
         </svg>
       );
     case "big-goal":
       return (
         <svg viewBox="0 0 18 14" className="h-4 w-4 shrink-0" aria-hidden>
-          <polygon points="4,3 4,11 15,11 15,3" fill="rgba(248,250,252,0.25)" stroke="#e2e8f0" strokeWidth="1.2" />
-          <line x1="7" y1="3" x2="7" y2="11" stroke="#cbd5e1" strokeWidth="0.6" />
-          <line x1="10.5" y1="3" x2="10.5" y2="11" stroke="#cbd5e1" strokeWidth="0.6" />
-          <line x1="13.5" y1="3" x2="13.5" y2="11" stroke="#cbd5e1" strokeWidth="0.6" />
+          <rect x="3" y="2" width="10" height="10" fill="rgba(248,250,252,0.2)" stroke="#e2e8f0" strokeWidth="1.2" />
+          <line x1="13" y1="2" x2="13" y2="12" stroke="#f8fafc" strokeWidth="1.6" />
+          <line x1="6" y1="2" x2="6" y2="12" stroke="#cbd5e1" strokeWidth="0.5" />
+          <line x1="9" y1="2" x2="9" y2="12" stroke="#cbd5e1" strokeWidth="0.5" />
+          <line x1="3" y1="5" x2="13" y2="5" stroke="#cbd5e1" strokeWidth="0.5" />
+          <line x1="3" y1="8" x2="13" y2="8" stroke="#cbd5e1" strokeWidth="0.5" />
         </svg>
       );
     case "mini-goal":
       return (
         <svg viewBox="0 0 16 12" className="h-4 w-4 shrink-0" aria-hidden>
-          <polygon points="4,3 4,9 14,9 14,3" fill="rgba(248,250,252,0.2)" stroke="#e2e8f0" strokeWidth="1.1" />
-          <line x1="7.5" y1="3" x2="7.5" y2="9" stroke="#cbd5e1" strokeWidth="0.6" />
-          <line x1="11" y1="3" x2="11" y2="9" stroke="#cbd5e1" strokeWidth="0.6" />
+          <rect x="3" y="2" width="8" height="8" fill="rgba(248,250,252,0.18)" stroke="#e2e8f0" strokeWidth="1.1" />
+          <line x1="11" y1="2" x2="11" y2="10" stroke="#f8fafc" strokeWidth="1.4" />
+          <line x1="5.5" y1="2" x2="5.5" y2="10" stroke="#cbd5e1" strokeWidth="0.5" />
+          <line x1="8" y1="2" x2="8" y2="10" stroke="#cbd5e1" strokeWidth="0.5" />
         </svg>
       );
     case "hurdle":
       return (
-        <svg viewBox="0 0 16 14" className="h-4 w-4 shrink-0" aria-hidden>
-          <rect x="2" y="3" width="2" height="9" fill="#facc15" />
-          <rect x="12" y="3" width="2" height="9" fill="#facc15" />
-          <rect x="2" y="5" width="2" height="2" fill="#111827" />
-          <rect x="12" y="5" width="2" height="2" fill="#111827" />
-          <path d="M3 4 Q8 1 13 4" fill="none" stroke="#ea580c" strokeWidth="1.8" strokeLinecap="round" />
+        <svg viewBox="0 0 16 12" className="h-4 w-4 shrink-0" aria-hidden>
+          <line x1="3" y1="6" x2="13" y2="6" stroke="#facc15" strokeWidth="2" strokeLinecap="round" />
+          <rect x="2" y="3" width="2.2" height="6" rx="0.5" fill="#facc15" stroke="#1e293b" strokeWidth="0.6" />
+          <rect x="11.8" y="3" width="2.2" height="6" rx="0.5" fill="#facc15" stroke="#1e293b" strokeWidth="0.6" />
         </svg>
       );
     case "cone":
       return (
         <svg viewBox="0 0 14 14" className="h-4 w-4 shrink-0" aria-hidden>
           <polygon
-            points="7,1 13,13 1,13"
+            points="7,1.5 12.5,12 1.5,12"
             fill={color ?? "#f97316"}
             stroke="#64748b"
             strokeWidth="1"
           />
+        </svg>
+      );
+    case "pole":
+      return (
+        <svg viewBox="0 0 14 14" className="h-4 w-4 shrink-0" aria-hidden>
+          <circle cx="7" cy="7" r="5.5" fill="#f8fafc" stroke="#0f172a" strokeWidth="1.2" />
+          <line x1="4" y1="7" x2="10" y2="7" stroke="#0f172a" strokeWidth="1.3" strokeLinecap="round" />
+          <line x1="7" y1="4" x2="7" y2="10" stroke="#0f172a" strokeWidth="1.3" strokeLinecap="round" />
+        </svg>
+      );
+    case "dummy":
+      return (
+        <svg viewBox="0 0 14 16" className="h-4 w-4 shrink-0" aria-hidden>
+          <ellipse cx="7" cy="9" rx="4" ry="5.5" fill={color ?? "#eab308"} stroke="#a16207" strokeWidth="1" />
+          <ellipse cx="7" cy="5.5" rx="5.5" ry="2.4" fill={color ?? "#eab308"} stroke="#a16207" strokeWidth="1" />
+          <circle cx="7" cy="3.2" r="1.6" fill={color ?? "#eab308"} stroke="#a16207" strokeWidth="0.8" />
         </svg>
       );
     default:
@@ -169,7 +186,10 @@ export function Toolbar({
                   color={meta.group === "spieler" || meta.group === "zeichnen" ? meta.color : undefined}
                   icon={
                     meta.group === "material" ? (
-                      <MaterialIcon type={type} color={type === "cone" ? coneColor : undefined} />
+                      <MaterialIcon
+                        type={type}
+                        color={type === "cone" || type === "dummy" ? coneColor : undefined}
+                      />
                     ) : undefined
                   }
                   onClick={() => onToolChange(type)}
@@ -227,8 +247,8 @@ export function Toolbar({
                 </div>
               </div>
               <p className="mt-2 text-xs text-slate-500">
-                Tore, Hürden und Hütchen starten aufrecht. Mehrfach klicken zum Stempeln.
-                Drehbar mit Anfasser oder Taste R.
+                DFB-Draufsicht: Hütchen, Stangen, Hürden, Dummies und Tore. Mehrfach klicken zum
+                Stempeln. Drehbar mit Anfasser oder Taste R.
               </p>
             </>
           )}

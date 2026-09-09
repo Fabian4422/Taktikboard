@@ -34,7 +34,7 @@ export function ObjectInspector({
   const showNumber = elementHasNumber(element.type);
   const showScale = elementSupportsScale(element.type);
   const showRotate = isRotatable(element.type);
-  const showConeColor = element.type === "cone";
+  const showConeColor = element.type === "cone" || element.type === "dummy";
   const activeConeColor = element.color ?? DEFAULT_CONE_COLOR;
 
   const parseNumber = (value: string, fallback: number) => {
@@ -133,7 +133,7 @@ export function ObjectInspector({
 
       {showConeColor && (
         <div className="mt-3">
-          <p className="mb-2 text-xs text-slate-400">Hütchen-Farbe</p>
+          <p className="mb-2 text-xs text-slate-400">Materialfarbe</p>
           <div className="flex flex-wrap gap-2">
             {CONE_COLOR_OPTIONS.map((opt) => (
               <button
