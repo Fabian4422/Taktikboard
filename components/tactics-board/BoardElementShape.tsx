@@ -26,18 +26,18 @@ interface BoardElementShapeProps {
   draggable: boolean;
   /** Gegenrotation für Labels, damit Text bei Feld-Drehung waagerecht bleibt */
   labelCounterRotation?: number;
-  /** Reiner Klick (ohne Drag) — öffnet Eigenschaften-Panel */
+  /** Reiner Tap/Klick (ohne Drag) — öffnet Eigenschaften-Panel */
   onSelect: () => void;
-  /** Pointer-Down auf Objekt — Panel sofort schließen (vor Klick/Drag-Entscheidung) */
-  onPointerIntent?: () => void;
-  /** Drag hat Schwelle überschritten — Panel bleibt zu */
+  /** Drag erkannt (Distanz/Zeit) — Panel schließen, Position behalten */
   onDragStart?: () => void;
   onDragEnd: (x: number, y: number) => void;
   onLineDragEnd: (dx: number, dy: number) => void;
   onTransformEnd?: (x: number, y: number, rotation: number) => void;
 }
 
-const DRAG_THRESHOLD_PX = 8;
+/** Touch-freundliche Schwellen: Finger-Zittern nicht als Drag werten */
+const DRAG_THRESHOLD_PX = 20;
+const DRAG_HOLD_MS = 300;
 
 export function BoardElementShape({
   element,
@@ -45,7 +45,6 @@ export function BoardElementShape({
   draggable,
   labelCounterRotation = 0,
   onSelect,
-  onPointerIntent,
   onDragStart,
   onDragEnd,
   onLineDragEnd,
@@ -55,7 +54,10 @@ export function BoardElementShape({
   const shapeRef = useRef(null);
   const transformerRef = useRef(null);
   const pointerStartRef = useRef<{ x: number; y: number } | null>(null);
+  const pointerStartTimeRef = useRef(0);
+  const lastPointerRef = useRef<{ x: number; y: number } | null>(null);
   const didDragRef = useRef(false);
+  const holdTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const canRotate = isRotatable(element.type);
   const elementScale = getElementScale(element);
   const uprightLabelRotation = -(labelCounterRotation + (element.rotation ?? 0));
@@ -92,55 +94,93 @@ export function BoardElementShape({
     return null;
   };
 
+  const clearHoldTimer = () => {
+    if (holdTimerRef.current != null) {
+      clearTimeout(holdTimerRef.current);
+      holdTimerRef.current = null;
+    }
+  };
+
+  const markDragIfNeeded = (pt: { x: number; y: number } | null) => {
+    if (didDragRef.current || !pointerStartRef.current) return;
+    const start = pointerStartRef.current;
+    const sample = pt ?? lastPointerRef.current ?? start;
+    const dist = Math.hypot(sample.x - start.x, sample.y - start.y);
+    const elapsed = Date.now() - pointerStartTimeRef.current;
+    if (dist >= DRAG_THRESHOLD_PX || (draggable && elapsed >= DRAG_HOLD_MS)) {
+      didDragRef.current = true;
+      clearHoldTimer();
+      if (draggable) onDragStart?.();
+    }
+  };
+
+  const handlePointerDown = (e: {
+    cancelBubble: boolean;
+    evt?: MouseEvent | TouchEvent;
+  }) => {
+    e.cancelBubble = true;
+    const pt = getClientPoint(e);
+    pointerStartRef.current = pt;
+    lastPointerRef.current = pt;
+    pointerStartTimeRef.current = Date.now();
+    didDragRef.current = false;
+    clearHoldTimer();
+    // Panel bewusst NICHT schließen — Entscheidung erst bei Up/Click
+    if (draggable) {
+      holdTimerRef.current = setTimeout(() => {
+        markDragIfNeeded(lastPointerRef.current);
+      }, DRAG_HOLD_MS);
+    }
+  };
+
+  const handlePointerMove = (e: { evt?: MouseEvent | TouchEvent }) => {
+    if (!pointerStartRef.current || didDragRef.current) return;
+    const pt = getClientPoint(e);
+    if (pt) lastPointerRef.current = pt;
+    markDragIfNeeded(pt);
+  };
+
+  const handleConfirmedTap = (e: { cancelBubble: boolean }) => {
+    e.cancelBubble = true;
+    clearHoldTimer();
+    // Finale Bewertung beim Loslassen: Distanz unter Schwelle + kurz genug = Tap
+    markDragIfNeeded(lastPointerRef.current);
+    if (didDragRef.current) {
+      pointerStartRef.current = null;
+      return;
+    }
+    const start = pointerStartRef.current;
+    const sample = lastPointerRef.current ?? start;
+    const dist =
+      start && sample ? Math.hypot(sample.x - start.x, sample.y - start.y) : 0;
+    const elapsed = Date.now() - pointerStartTimeRef.current;
+    pointerStartRef.current = null;
+    if (dist >= DRAG_THRESHOLD_PX || (draggable && elapsed >= DRAG_HOLD_MS)) {
+      didDragRef.current = true;
+      if (draggable) onDragStart?.();
+      return;
+    }
+    onSelect();
+  };
+
   const selectHandlers = {
     name: "board-element" as const,
-    onMouseDown: (e: { cancelBubble: boolean; evt?: MouseEvent | TouchEvent }) => {
-      e.cancelBubble = true;
-      const pt = getClientPoint(e);
-      pointerStartRef.current = pt;
-      didDragRef.current = false;
-      onPointerIntent?.();
-    },
+    dragDistance: DRAG_THRESHOLD_PX,
+    onMouseDown: handlePointerDown,
     onTouchStart: (e: { cancelBubble: boolean; evt?: MouseEvent | TouchEvent }) => {
-      e.cancelBubble = true;
       e.evt && "preventDefault" in e.evt && e.evt.preventDefault?.();
-      const pt = getClientPoint(e);
-      pointerStartRef.current = pt;
-      didDragRef.current = false;
-      onPointerIntent?.();
+      handlePointerDown(e);
     },
-    onMouseMove: (e: { evt?: MouseEvent | TouchEvent }) => {
-      if (!pointerStartRef.current || didDragRef.current || !draggable) return;
-      const pt = getClientPoint(e);
-      if (!pt) return;
-      const dist = Math.hypot(pt.x - pointerStartRef.current.x, pt.y - pointerStartRef.current.y);
-      if (dist >= DRAG_THRESHOLD_PX) {
-        didDragRef.current = true;
-        onDragStart?.();
-      }
-    },
-    onTouchMove: (e: { evt?: MouseEvent | TouchEvent }) => {
-      if (!pointerStartRef.current || didDragRef.current || !draggable) return;
-      const pt = getClientPoint(e);
-      if (!pt) return;
-      const dist = Math.hypot(pt.x - pointerStartRef.current.x, pt.y - pointerStartRef.current.y);
-      if (dist >= DRAG_THRESHOLD_PX) {
-        didDragRef.current = true;
-        onDragStart?.();
-      }
-    },
+    onMouseMove: handlePointerMove,
+    onTouchMove: handlePointerMove,
     onDragStart: (e: { cancelBubble: boolean }) => {
       e.cancelBubble = true;
       if (didDragRef.current) return;
       didDragRef.current = true;
       onDragStart?.();
     },
-    onClick: (e: { cancelBubble: boolean }) => {
-      e.cancelBubble = true;
-      // Nur reiner Klick (kein Drag) öffnet das Eigenschaften-Panel
-      if (didDragRef.current) return;
-      onSelect();
-    },
+    onClick: handleConfirmedTap,
+    onTap: handleConfirmedTap,
   };
 
   if (element.points && element.points.length >= 4) {
@@ -162,6 +202,7 @@ export function BoardElementShape({
         draggable={draggable}
         onDragEnd={(e: Konva.KonvaEventObject<DragEvent>) => {
           const node = e.target;
+          clearHoldTimer();
           onLineDragEnd(node.x(), node.y());
           node.position({ x: 0, y: 0 });
           pointerStartRef.current = null;
@@ -204,6 +245,7 @@ export function BoardElementShape({
     scaleY: elementScale,
     draggable,
     onDragEnd: (e: { target: { x: () => number; y: () => number } }) => {
+      clearHoldTimer();
       onDragEnd(e.target.x(), e.target.y());
       pointerStartRef.current = null;
     },

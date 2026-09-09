@@ -33,8 +33,6 @@ interface FieldCanvasProps {
   onElementTransform?: (id: string, x: number, y: number, rotation: number) => void;
   /** true während aktivem Drag — Panel ausblenden; optional elementId für Highlight ohne Panel */
   onDraggingChange?: (dragging: boolean, elementId?: string) => void;
-  /** Pointer-Down auf Objekt — Panel sofort schließen */
-  onElementPointerIntent?: () => void;
   stageRef?: React.RefObject<Konva.Stage | null>;
   /** 16:9-Rahmen in die verfügbare Fläche einpassen (Vollbild / Export) */
   fillParent?: boolean;
@@ -200,7 +198,6 @@ export function FieldCanvas({
   onFieldClick,
   onElementTransform,
   onDraggingChange,
-  onElementPointerIntent,
   stageRef: externalRef,
   fillParent = false,
   preview = false,
@@ -409,9 +406,8 @@ export function FieldCanvas({
                     draggable={!preview && !isPlaying && toolMode === "select"}
                     labelCounterRotation={0}
                     onSelect={() => onSelect(el.id)}
-                    onPointerIntent={onElementPointerIntent}
                     onDragStart={() => {
-                      // Highlight ohne Panel — Schwelle überschritten
+                      // Highlight ohne Panel — Drag erkannt (Distanz/Zeit)
                       onDraggingChange?.(true, el.id);
                     }}
                     onDragEnd={(x, y) => {

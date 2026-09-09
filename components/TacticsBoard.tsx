@@ -520,7 +520,6 @@ export function TacticsBoard({ exerciseId, initialName }: TacticsBoardProps) {
                     if (elementId) board.setSelectedId(elementId);
                   }
                 }}
-                onElementPointerIntent={() => setInspectorOpen(false)}
                 fieldView={board.fieldView}
                 fieldRotation={board.fieldRotation}
                 fillParent
