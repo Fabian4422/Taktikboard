@@ -38,7 +38,7 @@ function createExportCanvas(width: number, height: number): { canvas: AnyCanvas;
   if (typeof OffscreenCanvas !== "undefined") {
     const canvas = new OffscreenCanvas(w, h);
     const ctx = canvas.getContext("2d", { alpha: false });
-    if (ctx) return { canvas, ctx };
+    if (ctx) return { canvas, ctx: ctx as OffscreenCanvasRenderingContext2D };
   }
 
   if (typeof document !== "undefined") {
@@ -46,7 +46,7 @@ function createExportCanvas(width: number, height: number): { canvas: AnyCanvas;
     canvas.width = w;
     canvas.height = h;
     const ctx = canvas.getContext("2d", { alpha: false });
-    if (ctx) return { canvas, ctx };
+    if (ctx) return { canvas, ctx: ctx as CanvasRenderingContext2D };
   }
 
   throw new Error("OffscreenCanvas wird von diesem Browser nicht unterstützt.");
@@ -118,7 +118,7 @@ function ensureCanvasSize(canvas: AnyCanvas, width: number, height: number): Any
   if (!ctx) {
     throw new Error("Canvas-Kontext konnte nicht erzeugt werden.");
   }
-  return ctx;
+  return ctx as OffscreenCanvasRenderingContext2D;
 }
 
 function writeGifFrame(
