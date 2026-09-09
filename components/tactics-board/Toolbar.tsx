@@ -234,7 +234,7 @@ export function Toolbar({
                       aria-label={opt.label}
                       onClick={() => {
                         onConeColorChange(opt.value);
-                        onToolChange("cone");
+                        if (toolMode !== "cone") onToolChange("cone");
                       }}
                       className={`h-7 w-7 rounded-full border-2 transition ${
                         coneColor === opt.value
@@ -247,8 +247,8 @@ export function Toolbar({
                 </div>
               </div>
               <p className="mt-2 text-xs text-slate-500">
-                DFB-Draufsicht: Hütchen, Stangen, Hürden, Dummies und Tore. Mehrfach klicken zum
-                Stempeln. Drehbar mit Anfasser oder Taste R.
+                DFB-Draufsicht: Hütchen, Stangen, Hürden, Dummies und Tore. Angepasste Objekte
+                stempeln sich weiter; gleiches Werkzeug erneut = Standard.
               </p>
             </>
           )}

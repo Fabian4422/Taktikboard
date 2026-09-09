@@ -6,6 +6,7 @@ import {
   Keyframe,
   TacticsBoardDocument,
   ToolMode,
+  ElementType,
   getDefaultScale,
   cloneElements,
   createEmptyKeyframe,
@@ -195,9 +196,16 @@ export function useTacticsBoard(initialDocument?: TacticsBoardDocument) {
     initialDocument?.fieldRotation ?? 90,
   );
   const [playerScalePercent, setPlayerScalePercentState] = useState(DEFAULT_PLAYER_SCALE_PERCENT);
-  const [coneColor, setConeColor] = useState(DEFAULT_CONE_COLOR);
+  const [coneColor, setConeColorState] = useState(DEFAULT_CONE_COLOR);
   const [playbackRate, setPlaybackRate] = useState<PlaybackRate>(1);
   const clipboardRef = useRef<BoardElement | null>(null);
+  /** Merkzustand für Stempel: Farbe/Größe/Rotation des zuletzt angepassten Objekts. */
+  const stampMemoryRef = useRef<{
+    type: ElementType;
+    color?: string;
+    scale?: number;
+    rotation?: number;
+  } | null>(null);
 
   const animationRef = useRef<number | null>(null);
   const playbackRateRef = useRef(playbackRate);
@@ -244,6 +252,61 @@ export function useTacticsBoard(initialDocument?: TacticsBoardDocument) {
     [currentStepIndex],
   );
 
+  const clearStampMemory = useCallback(() => {
+    stampMemoryRef.current = null;
+  }, []);
+
+  /** Speichert angepasste Objekt-Eigenschaften als Stempel-Vorlage und aktiviert das Werkzeug. */
+  const rememberStampFromElement = useCallback((el: BoardElement) => {
+    if (LINE_TYPES.has(el.type) || el.points) return;
+    stampMemoryRef.current = {
+      type: el.type,
+      color: el.color,
+      scale: el.scale,
+      rotation: el.rotation,
+    };
+    setToolMode(el.type);
+    if (el.color && (el.type === "cone" || el.type === "dummy")) {
+      setConeColorState(el.color);
+    }
+  }, []);
+
+  /**
+   * Werkzeugwahl aus der Leiste:
+   * - anderes Werkzeug → Memory löschen, neues Werkzeug aktiv
+   * - gleiches Material erneut → Memory zurücksetzen (Standard-Ausgangsobjekt)
+   */
+  const selectTool = useCallback(
+    (mode: ToolMode) => {
+      setLineDraft(null);
+      if (mode !== "select" && mode === toolMode) {
+        clearStampMemory();
+        return;
+      }
+      clearStampMemory();
+      setToolMode(mode);
+    },
+    [clearStampMemory, toolMode],
+  );
+
+  const setConeColor = useCallback(
+    (color: string) => {
+      setConeColorState(color);
+      const memory = stampMemoryRef.current;
+      if (memory && (memory.type === "cone" || memory.type === "dummy")) {
+        stampMemoryRef.current = { ...memory, color };
+      }
+      if (selectedId) {
+        const selected = findElement(currentKeyframe.elements, selectedId);
+        if (selected && (selected.type === "cone" || selected.type === "dummy")) {
+          mutateElementWithCascade(selectedId, (el) => ({ ...el, color }));
+          rememberStampFromElement({ ...selected, color });
+        }
+      }
+    },
+    [currentKeyframe.elements, mutateElementWithCascade, rememberStampFromElement, selectedId],
+  );
+
   const handleElementMove = useCallback(
     (id: string, x: number, y: number) => {
       if (isPlaying) return;
@@ -255,21 +318,33 @@ export function useTacticsBoard(initialDocument?: TacticsBoardDocument) {
   const handleElementTransform = useCallback(
     (id: string, x: number, y: number, rotation: number) => {
       if (isPlaying) return;
-      mutateElementWithCascade(id, (el) => ({ ...el, x, y, rotation }));
+      const current = findElement(currentKeyframe.elements, id);
+      if (!current) return;
+      const next = { ...current, x, y, rotation };
+      mutateElementWithCascade(id, () => next);
+      rememberStampFromElement(next);
     },
-    [isPlaying, mutateElementWithCascade],
+    [currentKeyframe.elements, isPlaying, mutateElementWithCascade, rememberStampFromElement],
   );
 
   const rotateSelected = useCallback(
     (delta: number) => {
       if (!selectedId || isPlaying) return;
-      mutateElementWithCascade(selectedId, (el) => {
-        if (!isRotatable(el.type)) return el;
-        const next = ((el.rotation ?? 0) + delta) % 360;
-        return { ...el, rotation: next < 0 ? next + 360 : next };
-      });
+      const current = findElement(currentKeyframe.elements, selectedId);
+      if (!current || !isRotatable(current.type)) return;
+      const nextRot = ((current.rotation ?? 0) + delta) % 360;
+      const rotation = nextRot < 0 ? nextRot + 360 : nextRot;
+      const next = { ...current, rotation };
+      mutateElementWithCascade(selectedId, () => next);
+      rememberStampFromElement(next);
     },
-    [isPlaying, mutateElementWithCascade, selectedId],
+    [
+      currentKeyframe.elements,
+      isPlaying,
+      mutateElementWithCascade,
+      rememberStampFromElement,
+      selectedId,
+    ],
   );
 
   const handleLineMove = useCallback(
@@ -308,23 +383,37 @@ export function useTacticsBoard(initialDocument?: TacticsBoardDocument) {
 
         addElementWithCascade(newElement);
         setLineDraft(null);
+        clearStampMemory();
         setToolMode("select");
         setSelectedId(newElement.id);
         return;
       }
+
+      const memory = stampMemoryRef.current;
+      const useMemory = Boolean(memory && memory.type === toolMode);
 
       const base: BoardElement = {
         id: createId(),
         type: toolMode,
         x,
         y,
-        rotation: isRotatable(toolMode)
-          ? viewportUprightElementRotation(fieldRotation)
-          : undefined,
-        scale: isPlayerType(toolMode)
-          ? playerScalePercent / 100
-          : getDefaultScale(toolMode),
-        color: toolMode === "cone" || toolMode === "dummy" ? coneColor : undefined,
+        rotation:
+          useMemory && memory?.rotation != null
+            ? memory.rotation
+            : isRotatable(toolMode)
+              ? viewportUprightElementRotation(fieldRotation)
+              : undefined,
+        scale:
+          useMemory && memory?.scale != null
+            ? memory.scale
+            : isPlayerType(toolMode)
+              ? playerScalePercent / 100
+              : getDefaultScale(toolMode),
+        color: useMemory
+          ? memory?.color
+          : toolMode === "cone" || toolMode === "dummy"
+            ? coneColor
+            : undefined,
       };
 
       if (toolMode === "player-a") {
@@ -337,12 +426,12 @@ export function useTacticsBoard(initialDocument?: TacticsBoardDocument) {
         base.number = nextPlayerNumber(currentKeyframe.elements, "player-d");
       }
 
-      // Stempel-Modus: Werkzeug bleibt aktiv für Mehrfachplatzierung
       addElementWithCascade(base);
       setSelectedId(base.id);
     },
     [
       addElementWithCascade,
+      clearStampMemory,
       coneColor,
       currentKeyframe.elements,
       fieldRotation,
@@ -420,16 +509,29 @@ export function useTacticsBoard(initialDocument?: TacticsBoardDocument) {
 
     addElementWithCascade(pasted);
     setSelectedId(pasted.id);
+    clearStampMemory();
     setToolMode("select");
     return true;
-  }, [addElementWithCascade, currentKeyframe.elements, isPlaying]);
+  }, [addElementWithCascade, clearStampMemory, currentKeyframe.elements, isPlaying]);
 
   const updateSelectedElement = useCallback(
     (patch: Partial<Pick<BoardElement, "x" | "y" | "scale" | "number" | "color">>) => {
       if (!selectedId || isPlaying) return;
-      mutateElementWithCascade(selectedId, (el) => ({ ...el, ...patch }));
+      const current = findElement(currentKeyframe.elements, selectedId);
+      if (!current) return;
+      const next = { ...current, ...patch };
+      mutateElementWithCascade(selectedId, () => next);
+      if (patch.color !== undefined || patch.scale !== undefined) {
+        rememberStampFromElement(next);
+      }
     },
-    [isPlaying, mutateElementWithCascade, selectedId],
+    [
+      currentKeyframe.elements,
+      isPlaying,
+      mutateElementWithCascade,
+      rememberStampFromElement,
+      selectedId,
+    ],
   );
 
   const setPlayerScalePercent = useCallback((percent: number) => {
@@ -445,6 +547,10 @@ export function useTacticsBoard(initialDocument?: TacticsBoardDocument) {
         ),
       })),
     }));
+    const memory = stampMemoryRef.current;
+    if (memory && isPlayerType(memory.type)) {
+      stampMemoryRef.current = { ...memory, scale };
+    }
   }, []);
 
   const setKeyframeSpeed = useCallback((index: number, speed: KeyframeSpeed) => {
@@ -500,6 +606,7 @@ export function useTacticsBoard(initialDocument?: TacticsBoardDocument) {
     setCurrentStepIndex(0);
     setSelectedId(null);
     setLineDraft(null);
+    clearStampMemory();
     setToolMode("select");
     setIsPlaying(false);
     setIsPaused(false);
@@ -509,7 +616,7 @@ export function useTacticsBoard(initialDocument?: TacticsBoardDocument) {
     if (animationRef.current) {
       cancelAnimationFrame(animationRef.current);
     }
-  }, [isPlaying]);
+  }, [clearStampMemory, isPlaying]);
 
   const changeFieldView = useCallback((next: FieldView) => {
     // Nur Viewport wechseln — keine Drehung, keine Koordinaten-Änderung.
@@ -527,13 +634,14 @@ export function useTacticsBoard(initialDocument?: TacticsBoardDocument) {
     setIsPaused(false);
     setPlaybackProgress(0);
     setLineDraft(null);
+    clearStampMemory();
     setToolMode("select");
     timelineElapsedRef.current = 0;
     lastFrameRef.current = null;
     if (animationRef.current) {
       cancelAnimationFrame(animationRef.current);
     }
-  }, []);
+  }, [clearStampMemory]);
 
   const startPlayback = useCallback(() => {
     if (document.keyframes.length < 2) return;
@@ -675,7 +783,8 @@ export function useTacticsBoard(initialDocument?: TacticsBoardDocument) {
     currentStepIndex,
     setCurrentStepIndex,
     toolMode,
-    setToolMode,
+    setToolMode: selectTool,
+    selectTool,
     selectedId,
     setSelectedId,
     isPlaying,
