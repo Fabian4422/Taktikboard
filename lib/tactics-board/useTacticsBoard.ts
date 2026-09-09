@@ -436,7 +436,8 @@ export function useTacticsBoard(initialDocument?: TacticsBoardDocument) {
       }
 
       addElementWithCascade(base);
-      setSelectedId(base.id);
+      // Stempel-Modus: Objekt nicht selektieren — Panel bleibt zu, weiter stempeln
+      setSelectedId(null);
     },
     [
       addElementWithCascade,

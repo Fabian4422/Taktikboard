@@ -71,11 +71,14 @@ export function BoardElementShape({
     onMouseDown: (e: { cancelBubble: boolean; evt?: Event }) => {
       e.cancelBubble = true;
       onSelect();
+      // Panel sofort ausblenden, noch bevor Konva den Drag-Threshold erreicht
+      if (draggable) onDragStart?.();
     },
     onTouchStart: (e: { cancelBubble: boolean; evt?: Event }) => {
       e.cancelBubble = true;
       e.evt?.preventDefault?.();
       onSelect();
+      if (draggable) onDragStart?.();
     },
     onDragStart: (e: { cancelBubble: boolean }) => {
       e.cancelBubble = true;

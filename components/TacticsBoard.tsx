@@ -61,6 +61,22 @@ export function TacticsBoard({ exerciseId, initialName }: TacticsBoardProps) {
   } | null>(null);
   const [libraryOpen, setLibraryOpen] = useState(false);
   const [isDraggingObject, setIsDraggingObject] = useState(false);
+
+  useEffect(() => {
+    if (!isDraggingObject) return;
+    const endDrag = () => setIsDraggingObject(false);
+    window.addEventListener("pointerup", endDrag);
+    window.addEventListener("pointercancel", endDrag);
+    window.addEventListener("mouseup", endDrag);
+    window.addEventListener("touchend", endDrag);
+    return () => {
+      window.removeEventListener("pointerup", endDrag);
+      window.removeEventListener("pointercancel", endDrag);
+      window.removeEventListener("mouseup", endDrag);
+      window.removeEventListener("touchend", endDrag);
+    };
+  }, [isDraggingObject]);
+
   const pageTitleRef = useRef(
     typeof document === "undefined" ? "Taktikboard" : document.title,
   );
