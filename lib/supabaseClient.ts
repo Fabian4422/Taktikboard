@@ -14,18 +14,28 @@ export function isSupabaseConfigured(): boolean {
 
 let client: SupabaseClient | null = null;
 
-/** Browser-Client aus den NEXT_PUBLIC_ Umgebungsvariablen. */
-export function getSupabaseClient(): SupabaseClient {
-  if (!isSupabaseConfigured()) {
-    throw new Error(
-      "Supabase ist nicht konfiguriert (NEXT_PUBLIC_SUPABASE_URL / NEXT_PUBLIC_SUPABASE_ANON_KEY fehlen).",
-    );
+/**
+ * Browser-Client aus den NEXT_PUBLIC_ Umgebungsvariablen.
+ * Gibt `null` zurück statt zu werfen, wenn Env-Variablen fehlen oder
+ * die Initialisierung fehlschlägt — Aufrufer müssen das prüfen.
+ */
+export function getSupabaseClient(): SupabaseClient | null {
+  const url = getSupabaseUrl();
+  const key = getSupabaseAnonKey();
+
+  if (!url || !key) {
+    return null;
   }
 
   if (!client) {
-    client = createClient(getSupabaseUrl(), getSupabaseAnonKey(), {
-      auth: { persistSession: false, autoRefreshToken: false },
-    });
+    try {
+      client = createClient(url, key, {
+        auth: { persistSession: false, autoRefreshToken: false },
+      });
+    } catch (error) {
+      console.error("[supabase] Client-Initialisierung fehlgeschlagen", error);
+      return null;
+    }
   }
 
   return client;

@@ -15,7 +15,7 @@ import {
   isSupabaseConfigured,
 } from "@/lib/tactics-board/supabase";
 import { exportTacticsAnimation, type ExportFormat } from "@/lib/tactics-board/exportAnimation";
-import { FIELD_HEIGHT, FIELD_WIDTH } from "@/lib/tactics-board/types";
+import { FIELD_HEIGHT, FIELD_WIDTH, createEmptyKeyframe } from "@/lib/tactics-board/types";
 import {
   notifyExportComplete,
   requestExportNotificationPermission,
@@ -23,6 +23,8 @@ import {
   setExportTabTitle,
 } from "@/lib/tactics-board/exportNotifications";
 import { ExerciseLibraryModal } from "./tactics-board/ExerciseLibraryModal";
+
+const LOAD_FAILURE_TOAST = "Übung konnte nicht geladen werden";
 
 const FieldCanvas = dynamic(
   () => import("./tactics-board/FieldCanvas").then((m) => m.FieldCanvas),
@@ -51,6 +53,7 @@ export function TacticsBoard({ exerciseId, initialName }: TacticsBoardProps) {
   const [boardName, setBoardName] = useState(initialName ?? "Neues Taktikboard");
   const [isLoading, setIsLoading] = useState(Boolean(exerciseId));
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [toastWarning, setToastWarning] = useState<string | null>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [exportState, setExportState] = useState<{
     label: string;
@@ -60,9 +63,38 @@ export function TacticsBoard({ exerciseId, initialName }: TacticsBoardProps) {
   const pageTitleRef = useRef(
     typeof document === "undefined" ? "Taktikboard" : document.title,
   );
+  const toastTimerRef = useRef<number | null>(null);
+
+  const showLoadFailureToast = useCallback(() => {
+    if (toastTimerRef.current != null) {
+      window.clearTimeout(toastTimerRef.current);
+    }
+    setToastWarning(LOAD_FAILURE_TOAST);
+    toastTimerRef.current = window.setTimeout(() => {
+      setToastWarning(null);
+      toastTimerRef.current = null;
+    }, 4500);
+  }, []);
+
+  const resetToEmptyBoard = useCallback(() => {
+    applyDocument({
+      name: initialName ?? "Neues Taktikboard",
+      keyframes: [createEmptyKeyframe(1)],
+      fieldWidth: FIELD_WIDTH,
+      fieldHeight: FIELD_HEIGHT,
+    });
+    setBoardName(initialName ?? "Neues Taktikboard");
+  }, [applyDocument, initialName]);
 
   useEffect(() => {
-    if (!exerciseId || !isSupabaseConfigured()) {
+    if (!exerciseId) {
+      setIsLoading(false);
+      return;
+    }
+
+    if (!isSupabaseConfigured()) {
+      resetToEmptyBoard();
+      showLoadFailureToast();
       setIsLoading(false);
       return;
     }
@@ -73,23 +105,40 @@ export function TacticsBoard({ exerciseId, initialName }: TacticsBoardProps) {
       setIsLoading(true);
       setLoadError(null);
 
-      const { document, error } = await loadTacticsBoard(exerciseId);
-      if (cancelled) return;
+      try {
+        const { document, error } = await loadTacticsBoard(exerciseId);
+        if (cancelled) return;
 
-      if (document) {
-        applyDocument(document);
-        setBoardName(document.name);
-      } else {
-        setLoadError(error ?? "Übung konnte nicht geladen werden.");
+        if (document) {
+          applyDocument(document);
+          setBoardName(document.name);
+        } else {
+          console.warn("[TacticsBoard] Übung laden fehlgeschlagen:", error);
+          resetToEmptyBoard();
+          showLoadFailureToast();
+        }
+      } catch (error) {
+        if (cancelled) return;
+        console.error("[TacticsBoard] Übung laden Exception:", error);
+        resetToEmptyBoard();
+        showLoadFailureToast();
+      } finally {
+        if (!cancelled) setIsLoading(false);
       }
-
-      setIsLoading(false);
     })();
 
     return () => {
       cancelled = true;
     };
-  }, [exerciseId, applyDocument]);
+  }, [exerciseId, applyDocument, resetToEmptyBoard, showLoadFailureToast]);
+
+  useEffect(() => {
+    return () => {
+      if (toastTimerRef.current != null) {
+        window.clearTimeout(toastTimerRef.current);
+      }
+    };
+  }, []);
 
   const handleSave = useCallback(async () => {
     setSaveStatus("Speichern…");
@@ -141,20 +190,28 @@ export function TacticsBoard({ exerciseId, initialName }: TacticsBoardProps) {
       setLoadError(null);
       board.stopPlayback();
 
-      const { document, error } = await loadTacticsBoard(id);
-      if (document) {
-        applyDocument(document);
-        setBoardName(document.name || title);
-        router.replace(
-          `/admin/tactics-board?exerciseId=${encodeURIComponent(id)}&name=${encodeURIComponent(document.name || title)}`,
-        );
-      } else {
-        setLoadError(error ?? "Übung konnte nicht geladen werden.");
+      try {
+        const { document, error } = await loadTacticsBoard(id);
+        if (document) {
+          applyDocument(document);
+          setBoardName(document.name || title);
+          router.replace(
+            `/admin/tactics-board?exerciseId=${encodeURIComponent(id)}&name=${encodeURIComponent(document.name || title)}`,
+          );
+        } else {
+          console.warn("[TacticsBoard] Bibliothek laden fehlgeschlagen:", error);
+          resetToEmptyBoard();
+          showLoadFailureToast();
+        }
+      } catch (error) {
+        console.error("[TacticsBoard] Bibliothek laden Exception:", error);
+        resetToEmptyBoard();
+        showLoadFailureToast();
+      } finally {
+        setIsLoading(false);
       }
-
-      setIsLoading(false);
     },
-    [applyDocument, board, router],
+    [applyDocument, board, resetToEmptyBoard, router, showLoadFailureToast],
   );
 
   const toggleFullscreen = useCallback(async () => {
@@ -265,6 +322,15 @@ export function TacticsBoard({ exerciseId, initialName }: TacticsBoardProps) {
 
   return (
     <div className="relative mx-auto flex max-w-7xl flex-col gap-6 p-4 md:p-6">
+      {toastWarning && (
+        <div
+          className="fixed right-4 top-4 z-[60] max-w-sm rounded-lg border border-amber-500/40 bg-slate-900 px-4 py-3 text-sm text-amber-100 shadow-lg"
+          role="status"
+          aria-live="polite"
+        >
+          {toastWarning}
+        </div>
+      )}
       {!isFullscreen && (
         <header className="flex flex-wrap items-center justify-between gap-4">
           <div>

@@ -8,6 +8,7 @@ export { isSupabaseConfigured };
 /** Aktuelle Speichertabelle (nicht `tactics_boards` / `boards`). */
 export const TACTICS_TABLE = "tactics";
 export const TACTICS_VIDEO_BUCKET = "tactics-videos";
+const LOAD_FAILURE_MESSAGE = "Übung konnte nicht geladen werden";
 
 export interface BoardData {
   keyframes: Keyframe[];
@@ -119,6 +120,10 @@ async function uploadTacticVideo(
   video: TacticExportFile,
 ): Promise<{ publicUrl: string }> {
   const supabase = getSupabaseClient();
+  if (!supabase) {
+    throw new Error("Supabase ist nicht konfiguriert (NEXT_PUBLIC_SUPABASE_URL / ANON_KEY fehlen).");
+  }
+
   const ext = extensionFromFilename(video.filename, video.mimeType);
   const path = `${slugify(title)}-${createId()}.${ext}`;
 
@@ -183,6 +188,13 @@ export async function saveTactic(params: {
     });
 
     const supabase = getSupabaseClient();
+    if (!supabase) {
+      return {
+        success: false,
+        error: "Supabase ist nicht konfiguriert (NEXT_PUBLIC_SUPABASE_URL / ANON_KEY fehlen).",
+      };
+    }
+
     const { data, error } = await supabase.from(TACTICS_TABLE).insert(payload).select("id").single();
 
     logSupabase("INSERT result", { data, error });
@@ -271,7 +283,15 @@ export async function updateTactic(params: {
 
     logSupabase("UPDATE start", { table: TACTICS_TABLE, id: params.id, title });
 
-    const { data, error } = await getSupabaseClient()
+    const supabase = getSupabaseClient();
+    if (!supabase) {
+      return {
+        success: false,
+        error: "Supabase ist nicht konfiguriert (NEXT_PUBLIC_SUPABASE_URL / ANON_KEY fehlen).",
+      };
+    }
+
+    const { data, error } = await supabase
       .from(TACTICS_TABLE)
       .update(payload)
       .eq("id", params.id)
@@ -334,18 +354,23 @@ export async function saveTacticsBoard(
 export async function loadTacticsBoard(
   id: string,
 ): Promise<{ document: TacticsBoardDocument | null; error?: string }> {
-  const { tactic, error } = await loadTactic(id);
-  if (error || !tactic) {
-    return { document: null, error: error ?? "Übung nicht gefunden." };
-  }
+  try {
+    const { tactic, error } = await loadTactic(id);
+    if (error || !tactic) {
+      return { document: null, error: error ?? LOAD_FAILURE_MESSAGE };
+    }
 
-  if (!tactic.board_data?.keyframes) {
-    return { document: null, error: "Gespeicherte Board-Daten sind ungültig oder leer." };
-  }
+    if (!tactic.board_data?.keyframes) {
+      return { document: null, error: LOAD_FAILURE_MESSAGE };
+    }
 
-  return {
-    document: boardDataToDocument(tactic.id, tactic.title, tactic.board_data),
-  };
+    return {
+      document: boardDataToDocument(tactic.id, tactic.title, tactic.board_data),
+    };
+  } catch (error) {
+    console.error("[tactics/supabase] loadTacticsBoard exception", error);
+    return { document: null, error: LOAD_FAILURE_MESSAGE };
+  }
 }
 
 /**
@@ -361,37 +386,53 @@ export async function listTactics(): Promise<{ items: TacticSummary[]; error?: s
     };
   }
 
+  const supabase = getSupabaseClient();
+  if (!supabase) {
+    return {
+      items: [],
+      error: "Supabase ist nicht konfiguriert (NEXT_PUBLIC_SUPABASE_URL / ANON_KEY fehlen).",
+    };
+  }
+
   logSupabase("LIST start", {
     table: TACTICS_TABLE,
     userIdFilter: null,
     note: "Kein user_id-Filter — anon liest alle freigegebenen Zeilen",
   });
 
-  // Spalten ohne updated_at (Schema in 002_tactics.sql)
-  const { data, error } = await getSupabaseClient()
-    .from(TACTICS_TABLE)
-    .select("id, title, created_at, video_url")
-    .order("created_at", { ascending: false });
+  try {
+    // Spalten ohne updated_at (Schema in 002_tactics.sql)
+    const { data, error } = await supabase
+      .from(TACTICS_TABLE)
+      .select("id, title, created_at, video_url")
+      .order("created_at", { ascending: false });
 
-  const rowCount = data?.length ?? 0;
-  console.log(
-    `[tactics/supabase] LIST result: ${rowCount} Zeile(n) aus Tabelle „${TACTICS_TABLE}“`,
-    { data, error },
-  );
-
-  if (error) {
-    const message = formatSupabaseError(error, "Bibliothek konnte nicht geladen werden.");
-    console.error("[tactics/supabase] LIST error", error);
-    return { items: [], error: message };
-  }
-
-  if (rowCount === 0) {
-    console.warn(
-      "[tactics/supabase] LIST lieferte 0 Zeilen. Wenn Speichern „erfolgreich“ wirkte: RLS SELECT für Role „anon“ prüfen (Migration 002/004).",
+    const rowCount = data?.length ?? 0;
+    console.log(
+      `[tactics/supabase] LIST result: ${rowCount} Zeile(n) aus Tabelle „${TACTICS_TABLE}“`,
+      { data, error },
     );
-  }
 
-  return { items: (data ?? []) as TacticSummary[] };
+    if (error) {
+      const message = formatSupabaseError(error, "Bibliothek konnte nicht geladen werden.");
+      console.error("[tactics/supabase] LIST error", error);
+      return { items: [], error: message };
+    }
+
+    if (rowCount === 0) {
+      console.warn(
+        "[tactics/supabase] LIST lieferte 0 Zeilen. Wenn Speichern „erfolgreich“ wirkte: RLS SELECT für Role „anon“ prüfen (Migration 002/004).",
+      );
+    }
+
+    return { items: (data ?? []) as TacticSummary[] };
+  } catch (error) {
+    console.error("[tactics/supabase] LIST exception", error);
+    return {
+      items: [],
+      error: "Bibliothek konnte nicht geladen werden.",
+    };
+  }
 }
 
 export async function deleteTactic(id: string): Promise<{ success: boolean; error?: string }> {
@@ -402,38 +443,68 @@ export async function deleteTactic(id: string): Promise<{ success: boolean; erro
     };
   }
 
-  logSupabase("DELETE start", { table: TACTICS_TABLE, id });
-
-  const { error } = await getSupabaseClient().from(TACTICS_TABLE).delete().eq("id", id);
-
-  logSupabase("DELETE result", { id, error });
-
-  if (error) {
-    return { success: false, error: formatSupabaseError(error, "Löschen fehlgeschlagen.") };
+  const supabase = getSupabaseClient();
+  if (!supabase) {
+    return {
+      success: false,
+      error: "Supabase ist nicht konfiguriert (NEXT_PUBLIC_SUPABASE_URL / ANON_KEY fehlen).",
+    };
   }
 
-  return { success: true };
+  logSupabase("DELETE start", { table: TACTICS_TABLE, id });
+
+  try {
+    const { error } = await supabase.from(TACTICS_TABLE).delete().eq("id", id);
+
+    logSupabase("DELETE result", { id, error });
+
+    if (error) {
+      return { success: false, error: formatSupabaseError(error, "Löschen fehlgeschlagen.") };
+    }
+
+    return { success: true };
+  } catch (error) {
+    console.error("[tactics/supabase] DELETE exception", error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Löschen fehlgeschlagen.",
+    };
+  }
 }
 
 export async function loadTactic(id: string): Promise<{ tactic: TacticRecord | null; error?: string }> {
   if (!isSupabaseConfigured()) {
     return {
       tactic: null,
-      error: "Supabase ist nicht konfiguriert (NEXT_PUBLIC_SUPABASE_URL / ANON_KEY fehlen).",
+      error: LOAD_FAILURE_MESSAGE,
     };
   }
 
-  const { data, error } = await getSupabaseClient()
-    .from(TACTICS_TABLE)
-    .select("id, title, board_data, video_url, created_at")
-    .eq("id", id)
-    .single();
-
-  logSupabase("LOAD by id", { id, data: data ? { id: data.id, title: data.title } : null, error });
-
-  if (error) {
-    return { tactic: null, error: formatSupabaseError(error, "Übung nicht gefunden.") };
+  const supabase = getSupabaseClient();
+  if (!supabase) {
+    return {
+      tactic: null,
+      error: LOAD_FAILURE_MESSAGE,
+    };
   }
 
-  return { tactic: data as TacticRecord };
+  try {
+    const { data, error } = await supabase
+      .from(TACTICS_TABLE)
+      .select("id, title, board_data, video_url, created_at")
+      .eq("id", id)
+      .single();
+
+    logSupabase("LOAD by id", { id, data: data ? { id: data.id, title: data.title } : null, error });
+
+    if (error) {
+      console.error("[tactics/supabase] LOAD error", error);
+      return { tactic: null, error: LOAD_FAILURE_MESSAGE };
+    }
+
+    return { tactic: data as TacticRecord };
+  } catch (error) {
+    console.error("[tactics/supabase] LOAD exception", error);
+    return { tactic: null, error: LOAD_FAILURE_MESSAGE };
+  }
 }
