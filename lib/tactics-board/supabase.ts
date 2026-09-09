@@ -106,13 +106,25 @@ function formatSupabaseError(
   fallback: string,
 ): string {
   if (!error) return fallback;
+  const raw = error.message || fallback;
+  if (/failed to fetch|networkerror|load failed|fetch/i.test(raw)) {
+    return "Fehler beim Speichern in Supabase";
+  }
   const parts = [
-    error.message || fallback,
+    raw,
     error.code ? `code=${error.code}` : null,
     error.details ? `details=${error.details}` : null,
     error.hint ? `hint=${error.hint}` : null,
   ].filter(Boolean);
   return parts.join(" | ");
+}
+
+function toSaveUserMessage(error: unknown, fallback = "Fehler beim Speichern in Supabase"): string {
+  const raw = error instanceof Error ? error.message : String(error ?? "");
+  if (!raw || /failed to fetch|networkerror|load failed|typeerror/i.test(raw)) {
+    return fallback;
+  }
+  return raw;
 }
 
 function logSupabase(label: string, payload: Record<string, unknown>) {
@@ -246,7 +258,7 @@ export async function saveTactic(params: {
     console.error("[tactics/supabase] INSERT exception", error);
     return {
       success: false,
-      error: error instanceof Error ? error.message : "Speichern in Supabase fehlgeschlagen.",
+      error: toSaveUserMessage(error),
     };
   }
 }
@@ -323,7 +335,7 @@ export async function updateTactic(params: {
     console.error("[tactics/supabase] UPDATE exception", error);
     return {
       success: false,
-      error: error instanceof Error ? error.message : "Aktualisieren in Supabase fehlgeschlagen.",
+      error: toSaveUserMessage(error),
     };
   }
 }
@@ -336,22 +348,37 @@ export async function saveTacticsBoard(
   document: TacticsBoardDocument,
   options: SaveTacticsBoardOptions = {},
 ): Promise<SaveTacticsBoardResult> {
-  const title = (options.name ?? document.name).trim();
-  const boardData = documentToBoardData(document);
-  const existingId = document.id ?? options.exerciseId;
+  try {
+    if (!isSupabaseConfigured() || !getSupabaseClient()) {
+      return {
+        success: false,
+        error: "Fehler beim Speichern in Supabase",
+      };
+    }
 
-  logSupabase("saveTacticsBoard", {
-    title,
-    existingId: existingId ?? null,
-    mode: existingId ? "update" : "insert",
-    table: TACTICS_TABLE,
-  });
+    const title = (options.name ?? document.name).trim();
+    const boardData = documentToBoardData(document);
+    const existingId = document.id ?? options.exerciseId;
 
-  if (existingId) {
-    return updateTactic({ id: existingId, title, boardData });
+    logSupabase("saveTacticsBoard", {
+      title,
+      existingId: existingId ?? null,
+      mode: existingId ? "update" : "insert",
+      table: TACTICS_TABLE,
+    });
+
+    if (existingId) {
+      return await updateTactic({ id: existingId, title, boardData });
+    }
+
+    return await saveTactic({ title, boardData });
+  } catch (error) {
+    console.error("[tactics/supabase] saveTacticsBoard exception", error);
+    return {
+      success: false,
+      error: toSaveUserMessage(error),
+    };
   }
-
-  return saveTactic({ title, boardData });
 }
 
 /** Lädt ein gespeichertes Taktikboard anhand der Supabase-ID. */

@@ -145,6 +145,14 @@ export function TacticsBoard({ exerciseId, initialName }: TacticsBoardProps) {
     setLoadError(null);
 
     try {
+      if (!isSupabaseConfigured()) {
+        const message = "Fehler beim Speichern in Supabase";
+        setSaveStatus(message);
+        setToastWarning(message);
+        window.setTimeout(() => setToastWarning(null), 4500);
+        return;
+      }
+
       const result = await saveTacticsBoard(
         {
           ...board.document,
@@ -152,6 +160,7 @@ export function TacticsBoard({ exerciseId, initialName }: TacticsBoardProps) {
           exerciseId,
           fieldView: board.fieldView,
           fieldRotation: board.fieldRotation,
+          coordSpace: "viewport",
         },
         { exerciseId, name: boardName },
       );
@@ -159,27 +168,32 @@ export function TacticsBoard({ exerciseId, initialName }: TacticsBoardProps) {
       console.log("[TacticsBoard] save result", result);
 
       if (result.success && result.id) {
-        board.setDocument((prev) => ({ ...prev, id: result.id }));
-        router.replace(
-          `/admin/tactics-board?exerciseId=${encodeURIComponent(result.id)}&name=${encodeURIComponent(boardName)}`,
-        );
+        board.setDocument((prev) => ({ ...prev, id: result.id, coordSpace: "viewport" }));
+        try {
+          router.replace(
+            `/admin/tactics-board?exerciseId=${encodeURIComponent(result.id)}&name=${encodeURIComponent(boardName)}`,
+          );
+        } catch (navError) {
+          console.warn("[TacticsBoard] Navigation nach Speichern fehlgeschlagen:", navError);
+        }
         setSaveStatus("Gespeichert!");
         window.setTimeout(() => setSaveStatus(null), 3000);
         return;
       }
 
-      const message = result.error ?? "Fehler beim Speichern";
+      const message = result.error?.includes("Failed to fetch")
+        ? "Fehler beim Speichern in Supabase"
+        : (result.error ?? "Fehler beim Speichern in Supabase");
       console.error("[TacticsBoard] Speichern fehlgeschlagen:", message);
       setSaveStatus(message);
-      setLoadError(message);
-      window.alert(`Speichern fehlgeschlagen:\n\n${message}`);
+      setToastWarning(message);
+      window.setTimeout(() => setToastWarning(null), 4500);
     } catch (error) {
-      const message =
-        error instanceof Error ? error.message : "Unerwarteter Fehler beim Speichern.";
+      const message = "Fehler beim Speichern in Supabase";
       console.error("[TacticsBoard] Speichern Exception:", error);
       setSaveStatus(message);
-      setLoadError(message);
-      window.alert(`Speichern fehlgeschlagen:\n\n${message}`);
+      setToastWarning(message);
+      window.setTimeout(() => setToastWarning(null), 4500);
     }
   }, [board, boardName, exerciseId, router]);
 

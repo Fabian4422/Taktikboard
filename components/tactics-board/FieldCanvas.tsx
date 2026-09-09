@@ -208,6 +208,8 @@ export function FieldCanvas({
   const fieldGroupRef = useRef<{
     getRelativePointerPosition: () => { x: number; y: number } | null;
   } | null>(null);
+  const lastPointerActionRef = useRef(0);
+  const [linePreview, setLinePreview] = useState<{ x: number; y: number } | null>(null);
 
   useEffect(() => {
     const el = wrapRef.current;
@@ -260,13 +262,29 @@ export function FieldCanvas({
   const contentOffsetX = (logicalW - rotated.w) / 2;
   const contentOffsetY = (logicalH - rotated.h) / 2;
 
-  const handleStageClick = (e: {
+  useEffect(() => {
+    if (!lineDraft) setLinePreview(null);
+  }, [lineDraft]);
+
+  const handleStagePointer = (e: {
+    evt?: Event;
+    cancelBubble?: boolean;
     target: {
       getStage: () => unknown;
       name?: () => string;
       getParent?: () => unknown;
     };
   }) => {
+    // Touch erzeugt oft Tap + Click → nur einmal verarbeiten
+    const now = Date.now();
+    if (now - lastPointerActionRef.current < 160) {
+      e.evt?.preventDefault?.();
+      return;
+    }
+    lastPointerActionRef.current = now;
+
+    e.evt?.preventDefault?.();
+
     let node: { name?: () => string; getParent?: () => unknown } | null = e.target;
     const stage = e.target.getStage();
     while (node && node !== stage) {
@@ -281,6 +299,13 @@ export function FieldCanvas({
       if (!pointer) return;
       onFieldClick(pointer.x, pointer.y);
     }
+  };
+
+  const handleStageMove = () => {
+    if (!lineDraft || preview || isPlaying) return;
+    const pointer = fieldGroupRef.current?.getRelativePointerPosition();
+    if (!pointer) return;
+    setLinePreview(pointer);
   };
 
   return (
@@ -299,8 +324,10 @@ export function FieldCanvas({
           scaleX={scale}
           scaleY={scale}
           listening={!preview}
-          onClick={handleStageClick}
-          onTap={handleStageClick}
+          onClick={handleStagePointer}
+          onTap={handleStagePointer}
+          onMouseMove={handleStageMove}
+          onTouchMove={handleStageMove}
           style={{ cursor: preview ? "default" : toolMode !== "select" && !isPlaying ? "crosshair" : "default" }}
         >
           <Layer listening={!preview}>
@@ -381,7 +408,20 @@ export function FieldCanvas({
                 ))}
 
                 {lineDraft && (
-                  <Circle x={lineDraft.x} y={lineDraft.y} radius={6} fill="#38bdf8" opacity={0.8} />
+                  <>
+                    <Circle x={lineDraft.x} y={lineDraft.y} radius={6} fill="#38bdf8" opacity={0.8} />
+                    {linePreview && (
+                      <Line
+                        points={[lineDraft.x, lineDraft.y, linePreview.x, linePreview.y]}
+                        stroke="#38bdf8"
+                        strokeWidth={3}
+                        dash={[8, 6]}
+                        lineCap="round"
+                        opacity={0.85}
+                        listening={false}
+                      />
+                    )}
+                  </>
                 )}
               </Group>
             </Group>

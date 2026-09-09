@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import type { BoardElement } from "@/lib/tactics-board/types";
 import {
   CONE_COLOR_OPTIONS,
@@ -37,9 +38,30 @@ export function ObjectInspector({
   const showConeColor = element.type === "cone" || element.type === "dummy";
   const activeConeColor = element.color ?? DEFAULT_CONE_COLOR;
 
+  const [xDraft, setXDraft] = useState(String(Math.round(element.x)));
+  const [yDraft, setYDraft] = useState(String(Math.round(element.y)));
+
+  useEffect(() => {
+    setXDraft(String(Math.round(element.x)));
+    setYDraft(String(Math.round(element.y)));
+  }, [element.id, element.x, element.y]);
+
   const parseNumber = (value: string, fallback: number) => {
     const parsed = Number.parseFloat(value);
     return Number.isFinite(parsed) ? parsed : fallback;
+  };
+
+  const commitAxis = (axis: "x" | "y", raw: string) => {
+    if (raw.trim() === "") {
+      onUpdate({ [axis]: 0 });
+      if (axis === "x") setXDraft("0");
+      else setYDraft("0");
+      return;
+    }
+    const next = parseNumber(raw, axis === "x" ? element.x : element.y);
+    onUpdate({ [axis]: next });
+    if (axis === "x") setXDraft(String(Math.round(next)));
+    else setYDraft(String(Math.round(next)));
   };
 
   return (
@@ -67,20 +89,32 @@ export function ObjectInspector({
         <label className="flex flex-col gap-1">
           <span className="text-xs text-slate-400">X</span>
           <input
-            type="number"
-            step={1}
-            value={Math.round(element.x)}
-            onChange={(e) => onUpdate({ x: parseNumber(e.target.value, element.x) })}
+            type="text"
+            inputMode="decimal"
+            value={xDraft}
+            onChange={(e) => setXDraft(e.target.value)}
+            onBlur={() => commitAxis("x", xDraft)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.currentTarget.blur();
+              }
+            }}
             className="rounded-lg border border-slate-600 bg-slate-950 px-2 py-1.5 text-sm text-white"
           />
         </label>
         <label className="flex flex-col gap-1">
           <span className="text-xs text-slate-400">Y</span>
           <input
-            type="number"
-            step={1}
-            value={Math.round(element.y)}
-            onChange={(e) => onUpdate({ y: parseNumber(e.target.value, element.y) })}
+            type="text"
+            inputMode="decimal"
+            value={yDraft}
+            onChange={(e) => setYDraft(e.target.value)}
+            onBlur={() => commitAxis("y", yDraft)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.currentTarget.blur();
+              }
+            }}
             className="rounded-lg border border-slate-600 bg-slate-950 px-2 py-1.5 text-sm text-white"
           />
         </label>

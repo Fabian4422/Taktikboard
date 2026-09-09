@@ -377,6 +377,11 @@ export function useTacticsBoard(initialDocument?: TacticsBoardDocument) {
           return;
         }
 
+        // Doppel-Tap / Fast-Click: Endpunkt muss sich vom Start unterscheiden
+        if (Math.hypot(x - lineDraft.x, y - lineDraft.y) < 6) {
+          return;
+        }
+
         const newElement: BoardElement = {
           id: createId(),
           type: toolMode,
