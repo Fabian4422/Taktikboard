@@ -400,6 +400,12 @@ export function TacticsBoard({ exerciseId, initialName }: TacticsBoardProps) {
             toolMode={board.toolMode}
             onToolChange={board.setToolMode}
             onDeleteSelected={board.deleteSelected}
+            onCopySelected={() => {
+              board.copySelected();
+            }}
+            onPasteClipboard={() => {
+              board.pasteClipboard();
+            }}
             hasSelection={Boolean(board.selectedId)}
             fieldView={board.fieldView}
             fieldRotation={board.fieldRotation}

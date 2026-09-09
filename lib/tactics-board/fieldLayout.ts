@@ -151,6 +151,20 @@ export function nextFieldRotation(current: FieldRotation): FieldRotation {
   return ((current + 90) % 360) as FieldRotation;
 }
 
+/** Winkel in [0, 360) normalisieren. */
+export function normalizeDegrees(degrees: number): number {
+  const n = degrees % 360;
+  return n < 0 ? n + 360 : n;
+}
+
+/**
+ * Element-Rotation im Feld-Raum, damit das Icon relativ zum Viewport aufrecht (0°) steht.
+ * Bei fieldRotation 90° ⇒ Element-Rotation 270° (−90°).
+ */
+export function viewportUprightElementRotation(fieldRotation: FieldRotation): number {
+  return normalizeDegrees(-fieldRotation);
+}
+
 export const FIELD_VIEW_LABELS: Record<FieldView, string> = {
   full: "Ganzes Feld",
   half: "Halbes Feld",

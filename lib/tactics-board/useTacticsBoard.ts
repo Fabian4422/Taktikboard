@@ -25,7 +25,7 @@ import {
   type KeyframeSpeed,
   type PlaybackRate,
 } from "@/lib/tactics-board/types";
-import { nextFieldRotation } from "@/lib/tactics-board/fieldLayout";
+import { nextFieldRotation, viewportUprightElementRotation, normalizeDegrees } from "@/lib/tactics-board/fieldLayout";
 import { createId } from "@/lib/uuid";
 
 const DEFAULT_DOCUMENT: TacticsBoardDocument = {
@@ -197,6 +197,7 @@ export function useTacticsBoard(initialDocument?: TacticsBoardDocument) {
   const [playerScalePercent, setPlayerScalePercentState] = useState(DEFAULT_PLAYER_SCALE_PERCENT);
   const [coneColor, setConeColor] = useState(DEFAULT_CONE_COLOR);
   const [playbackRate, setPlaybackRate] = useState<PlaybackRate>(1);
+  const clipboardRef = useRef<BoardElement | null>(null);
 
   const animationRef = useRef<number | null>(null);
   const playbackRateRef = useRef(playbackRate);
@@ -317,7 +318,9 @@ export function useTacticsBoard(initialDocument?: TacticsBoardDocument) {
         type: toolMode,
         x,
         y,
-        rotation: isRotatable(toolMode) ? 0 : undefined,
+        rotation: isRotatable(toolMode)
+          ? viewportUprightElementRotation(fieldRotation)
+          : undefined,
         scale: isPlayerType(toolMode)
           ? playerScalePercent / 100
           : getDefaultScale(toolMode),
@@ -334,14 +337,15 @@ export function useTacticsBoard(initialDocument?: TacticsBoardDocument) {
         base.number = nextPlayerNumber(currentKeyframe.elements, "player-d");
       }
 
+      // Stempel-Modus: Werkzeug bleibt aktiv für Mehrfachplatzierung
       addElementWithCascade(base);
       setSelectedId(base.id);
-      setToolMode("select");
     },
     [
       addElementWithCascade,
       coneColor,
       currentKeyframe.elements,
+      fieldRotation,
       isPlaying,
       lineDraft,
       playerScalePercent,
@@ -382,6 +386,43 @@ export function useTacticsBoard(initialDocument?: TacticsBoardDocument) {
     mutateElementWithCascade(selectedId, () => null);
     setSelectedId(null);
   }, [mutateElementWithCascade, selectedId]);
+
+  const copySelected = useCallback(() => {
+    if (!selectedId || isPlaying) return false;
+    const source = findElement(currentKeyframe.elements, selectedId);
+    if (!source) return false;
+    clipboardRef.current = cloneBoardElement(source);
+    return true;
+  }, [currentKeyframe.elements, isPlaying, selectedId]);
+
+  const pasteClipboard = useCallback(() => {
+    if (isPlaying || !clipboardRef.current) return false;
+    const template = clipboardRef.current;
+    const offset = 28;
+    const pasted: BoardElement = {
+      ...cloneBoardElement(template),
+      id: createId(),
+      x: template.x + offset,
+      y: template.y + offset,
+      points: template.points
+        ? template.points.map((v, i) => (i % 2 === 0 ? v + offset : v + offset))
+        : undefined,
+    };
+
+    if (
+      pasted.type === "player-a" ||
+      pasted.type === "player-b" ||
+      pasted.type === "player-c" ||
+      pasted.type === "player-d"
+    ) {
+      pasted.number = nextPlayerNumber(currentKeyframe.elements, pasted.type);
+    }
+
+    addElementWithCascade(pasted);
+    setSelectedId(pasted.id);
+    setToolMode("select");
+    return true;
+  }, [addElementWithCascade, currentKeyframe.elements, isPlaying]);
 
   const updateSelectedElement = useCallback(
     (patch: Partial<Pick<BoardElement, "x" | "y" | "scale" | "number" | "color">>) => {
@@ -425,9 +466,25 @@ export function useTacticsBoard(initialDocument?: TacticsBoardDocument) {
   }, [isPlaying]);
 
   const rotateField = useCallback(() => {
-    // 90° im Uhrzeigersinn — nur Darstellung, Element-Koordinaten bleiben gleich
-    setFieldRotation((prev) => nextFieldRotation(prev));
-  }, []);
+    // 90° im Uhrzeigersinn — Element-Koordinaten bleiben gleich.
+    // Rotierbare Materialien: −90°, damit Icons relativ zum Viewport aufrecht bleiben.
+    const next = nextFieldRotation(fieldRotation);
+    const delta = 90;
+    setFieldRotation(next);
+    setDocument((doc) => ({
+      ...doc,
+      keyframes: doc.keyframes.map((kf) => ({
+        ...kf,
+        elements: kf.elements.map((el) => {
+          if (!isRotatable(el.type)) return el;
+          return {
+            ...el,
+            rotation: normalizeDegrees((el.rotation ?? 0) - delta),
+          };
+        }),
+      })),
+    }));
+  }, [fieldRotation]);
 
   const clearBoard = useCallback(() => {
     if (isPlaying) return;
@@ -571,14 +628,32 @@ export function useTacticsBoard(initialDocument?: TacticsBoardDocument) {
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
+        return;
+      }
+
+      const mod = e.ctrlKey || e.metaKey;
+      if (mod && (e.key === "c" || e.key === "C")) {
+        if (selectedId) {
+          e.preventDefault();
+          copySelected();
+        }
+        return;
+      }
+      if (mod && (e.key === "v" || e.key === "V")) {
+        e.preventDefault();
+        pasteClipboard();
+        return;
+      }
+
       if (e.key === "Delete" || e.key === "Backspace") {
-        if (selectedId && !(e.target instanceof HTMLInputElement)) {
+        if (selectedId) {
           e.preventDefault();
           deleteSelected();
         }
       }
       if (e.key === "r" || e.key === "R") {
-        if (selectedId && !(e.target instanceof HTMLInputElement)) {
+        if (selectedId) {
           e.preventDefault();
           rotateSelected(e.shiftKey ? -45 : 45);
         }
@@ -586,7 +661,7 @@ export function useTacticsBoard(initialDocument?: TacticsBoardDocument) {
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [deleteSelected, rotateSelected, selectedId]);
+  }, [copySelected, deleteSelected, pasteClipboard, rotateSelected, selectedId]);
 
   const elementsToRender = isPlaying || isPaused ? displayElements : currentKeyframe.elements;
   const selectedElement = selectedId
@@ -616,6 +691,8 @@ export function useTacticsBoard(initialDocument?: TacticsBoardDocument) {
     addKeyframe,
     deleteKeyframe,
     deleteSelected,
+    copySelected,
+    pasteClipboard,
     rotateSelected,
     fieldView,
     setFieldView: changeFieldView,

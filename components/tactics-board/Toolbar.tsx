@@ -10,6 +10,8 @@ interface ToolbarProps {
   toolMode: ToolMode;
   onToolChange: (mode: ToolMode) => void;
   onDeleteSelected: () => void;
+  onCopySelected?: () => void;
+  onPasteClipboard?: () => void;
   hasSelection: boolean;
   fieldView: FieldView;
   fieldRotation: FieldRotation;
@@ -120,6 +122,8 @@ export function Toolbar({
   toolMode,
   onToolChange,
   onDeleteSelected,
+  onCopySelected,
+  onPasteClipboard,
   hasSelection,
   fieldView,
   fieldRotation,
@@ -223,7 +227,8 @@ export function Toolbar({
                 </div>
               </div>
               <p className="mt-2 text-xs text-slate-500">
-                Tore, Hürden und Hütchen sind drehbar (Anfasser oder Taste R).
+                Tore, Hürden und Hütchen starten aufrecht. Mehrfach klicken zum Stempeln.
+                Drehbar mit Anfasser oder Taste R.
               </p>
             </>
           )}
@@ -231,12 +236,42 @@ export function Toolbar({
       ))}
 
       {hasSelection && (
+        <div className="flex flex-col gap-2">
+          {onCopySelected && (
+            <button
+              type="button"
+              onClick={onCopySelected}
+              className="rounded-lg border border-sky-500/50 bg-sky-500/10 px-3 py-2 text-sm text-sky-300 transition hover:bg-sky-500/20"
+            >
+              Kopieren (Ctrl+C)
+            </button>
+          )}
+          {onPasteClipboard && (
+            <button
+              type="button"
+              onClick={onPasteClipboard}
+              className="rounded-lg border border-slate-600 bg-slate-800 px-3 py-2 text-sm text-slate-200 transition hover:bg-slate-700"
+            >
+              Einfügen (Ctrl+V)
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={onDeleteSelected}
+            className="rounded-lg border border-red-500/50 bg-red-500/10 px-3 py-2 text-sm text-red-400 transition hover:bg-red-500/20"
+          >
+            Auswahl löschen (Entf)
+          </button>
+        </div>
+      )}
+
+      {!hasSelection && onPasteClipboard && (
         <button
           type="button"
-          onClick={onDeleteSelected}
-          className="rounded-lg border border-red-500/50 bg-red-500/10 px-3 py-2 text-sm text-red-400 transition hover:bg-red-500/20"
+          onClick={onPasteClipboard}
+          className="rounded-lg border border-slate-600 bg-slate-800 px-3 py-2 text-sm text-slate-200 transition hover:bg-slate-700"
         >
-          Auswahl löschen (Entf)
+          Einfügen (Ctrl+V)
         </button>
       )}
 
