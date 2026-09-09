@@ -314,6 +314,7 @@ export function FieldCanvas({
               listening={false}
             />
             <Group x={contentOffsetX} y={contentOffsetY}>
+              {/* Nur Rasen/Linien rotieren — Objekt-Koordinaten bleiben viewport-starr */}
               <Group
                 x={rotated.w / 2}
                 y={rotated.h / 2}
@@ -324,8 +325,9 @@ export function FieldCanvas({
                 clipY={0}
                 clipWidth={viewport.w}
                 clipHeight={viewport.h}
+                listening={false}
               >
-                <Group ref={fieldGroupRef} x={-viewport.x} y={-viewport.y}>
+                <Group x={-viewport.x} y={-viewport.y}>
                   <Rect
                     x={0}
                     y={0}
@@ -335,7 +337,6 @@ export function FieldCanvas({
                     fillLinearGradientEndPoint={{ x: FIELD_WIDTH, y: FIELD_HEIGHT }}
                     fillLinearGradientColorStops={[0, "#2d8a4e", 0.5, "#358f55", 1, "#2d8a4e"]}
                   />
-                  {/* Abwechselnde hell-/dunkelgrüne Rasenstreifen für Tiefe */}
                   {showsFieldStripes(fieldView) &&
                     Array.from({ length: 10 }).map((_, i) => {
                       const stripeW = FIELD_WIDTH / 10;
@@ -352,27 +353,36 @@ export function FieldCanvas({
                       );
                     })}
                   {showsFieldLines(fieldView) && <FootballFieldLines />}
-
-                  {elements.map((el) => (
-                    <BoardElementShape
-                      key={el.id}
-                      element={el}
-                      selected={!preview && el.id === selectedId}
-                      draggable={!preview && !isPlaying && toolMode === "select"}
-                      labelCounterRotation={rotation}
-                      onSelect={() => onSelect(el.id)}
-                      onDragEnd={(x, y) => onElementMove(el.id, x, y)}
-                      onLineDragEnd={(dx, dy) => onLineMove(el.id, dx, dy)}
-                      onTransformEnd={(x, y, rotationDeg) =>
-                        onElementTransform?.(el.id, x, y, rotationDeg)
-                      }
-                    />
-                  ))}
-
-                  {lineDraft && (
-                    <Circle x={lineDraft.x} y={lineDraft.y} radius={6} fill="#38bdf8" opacity={0.8} />
-                  )}
                 </Group>
+              </Group>
+
+              {/* Objekte: starres Viewport-X/Y (rechts / unten), ohne Feld-Rotationsmatrix */}
+              <Group
+                ref={fieldGroupRef}
+                clipX={0}
+                clipY={0}
+                clipWidth={rotated.w}
+                clipHeight={rotated.h}
+              >
+                {elements.map((el) => (
+                  <BoardElementShape
+                    key={el.id}
+                    element={el}
+                    selected={!preview && el.id === selectedId}
+                    draggable={!preview && !isPlaying && toolMode === "select"}
+                    labelCounterRotation={0}
+                    onSelect={() => onSelect(el.id)}
+                    onDragEnd={(x, y) => onElementMove(el.id, x, y)}
+                    onLineDragEnd={(dx, dy) => onLineMove(el.id, dx, dy)}
+                    onTransformEnd={(x, y, rotationDeg) =>
+                      onElementTransform?.(el.id, x, y, rotationDeg)
+                    }
+                  />
+                ))}
+
+                {lineDraft && (
+                  <Circle x={lineDraft.x} y={lineDraft.y} radius={6} fill="#38bdf8" opacity={0.8} />
+                )}
               </Group>
             </Group>
           </Layer>

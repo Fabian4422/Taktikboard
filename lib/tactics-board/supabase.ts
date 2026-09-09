@@ -1,5 +1,6 @@
 import type { FieldRotation, FieldView, Keyframe, TacticsBoardDocument } from "./types";
-import { FIELD_HEIGHT, FIELD_WIDTH, migrateDocumentToCurrentField } from "./types";
+import { FIELD_HEIGHT, FIELD_WIDTH } from "./types";
+import { migrateTacticsDocument } from "./fieldLayout";
 import { getSupabaseClient, isSupabaseConfigured } from "@/lib/supabaseClient";
 import { createId } from "@/lib/uuid";
 
@@ -16,6 +17,7 @@ export interface BoardData {
   fieldHeight: number;
   fieldView?: FieldView;
   fieldRotation?: FieldRotation;
+  coordSpace?: "field" | "viewport";
 }
 
 export interface TacticExportFile {
@@ -57,6 +59,7 @@ function documentToBoardData(document: TacticsBoardDocument): BoardData {
     fieldHeight: document.fieldHeight,
     fieldView: document.fieldView,
     fieldRotation: document.fieldRotation,
+    coordSpace: document.coordSpace ?? "viewport",
   };
 }
 
@@ -65,7 +68,7 @@ function boardDataToDocument(
   title: string,
   boardData: BoardData,
 ): TacticsBoardDocument {
-  return migrateDocumentToCurrentField({
+  return migrateTacticsDocument({
     id,
     name: title,
     keyframes: boardData.keyframes ?? [],
@@ -73,6 +76,7 @@ function boardDataToDocument(
     fieldHeight: boardData.fieldHeight ?? FIELD_HEIGHT,
     fieldView: boardData.fieldView,
     fieldRotation: boardData.fieldRotation,
+    coordSpace: boardData.coordSpace,
   });
 }
 

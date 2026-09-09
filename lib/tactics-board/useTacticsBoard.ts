@@ -19,14 +19,17 @@ import {
   FIELD_WIDTH,
   DEFAULT_PLAYER_SCALE_PERCENT,
   DEFAULT_CONE_COLOR,
-  migrateDocumentToCurrentField,
   getElementScale,
   type FieldRotation,
   type FieldView,
   type KeyframeSpeed,
   type PlaybackRate,
 } from "@/lib/tactics-board/types";
-import { nextFieldRotation, viewportUprightElementRotation, normalizeDegrees } from "@/lib/tactics-board/fieldLayout";
+import {
+  migrateTacticsDocument,
+  nextFieldRotation,
+  viewportUprightElementRotation,
+} from "@/lib/tactics-board/fieldLayout";
 import { createId } from "@/lib/uuid";
 
 const DEFAULT_DOCUMENT: TacticsBoardDocument = {
@@ -34,6 +37,7 @@ const DEFAULT_DOCUMENT: TacticsBoardDocument = {
   keyframes: [createEmptyKeyframe(1)],
   fieldWidth: FIELD_WIDTH,
   fieldHeight: FIELD_HEIGHT,
+  coordSpace: "viewport",
 };
 
 const LINE_TYPES = new Set(["pass-line", "run-path", "dribble-path", "guide-line"]);
@@ -572,25 +576,9 @@ export function useTacticsBoard(initialDocument?: TacticsBoardDocument) {
   }, [isPlaying]);
 
   const rotateField = useCallback(() => {
-    // 90° im Uhrzeigersinn — Element-Koordinaten bleiben gleich.
-    // Rotierbare Materialien: −90°, damit Icons relativ zum Viewport aufrecht bleiben.
-    const next = nextFieldRotation(fieldRotation);
-    const delta = 90;
-    setFieldRotation(next);
-    setDocument((doc) => ({
-      ...doc,
-      keyframes: doc.keyframes.map((kf) => ({
-        ...kf,
-        elements: kf.elements.map((el) => {
-          if (!isRotatable(el.type)) return el;
-          return {
-            ...el,
-            rotation: normalizeDegrees((el.rotation ?? 0) - delta),
-          };
-        }),
-      })),
-    }));
-  }, [fieldRotation]);
+    // Nur Hintergrund drehen — Objekt-X/Y bleiben viewport-starr (Bildschirmachsen).
+    setFieldRotation((prev) => nextFieldRotation(prev));
+  }, []);
 
   const clearBoard = useCallback(() => {
     if (isPlaying) return;
@@ -601,6 +589,7 @@ export function useTacticsBoard(initialDocument?: TacticsBoardDocument) {
 
     setDocument((prev) => ({
       ...prev,
+      coordSpace: "viewport",
       keyframes: [createEmptyKeyframe(1)],
     }));
     setCurrentStepIndex(0);
@@ -624,7 +613,7 @@ export function useTacticsBoard(initialDocument?: TacticsBoardDocument) {
   }, []);
 
   const applyDocument = useCallback((doc: TacticsBoardDocument) => {
-    const migrated = migrateDocumentToCurrentField(doc);
+    const migrated = migrateTacticsDocument(doc);
     setDocument(migrated);
     setFieldView(migrated.fieldView ?? "full");
     setFieldRotation(migrated.fieldRotation ?? 90);

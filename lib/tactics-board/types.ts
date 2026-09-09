@@ -92,6 +92,11 @@ export interface TacticsBoardDocument {
   fieldHeight: number;
   fieldView?: FieldView;
   fieldRotation?: FieldRotation;
+  /**
+   * "viewport" = X/Y starr am Bildschirm (aktuell).
+   * "field" / fehlend = Legacy: Koordinaten im mitrotierenden Feldraum.
+   */
+  coordSpace?: "field" | "viewport";
   updatedAt?: string;
 }
 
@@ -207,8 +212,7 @@ export function scaleBoardElements(
 
 /**
  * Stellt das FIFA-Feldmaß (1050×680) wieder her.
- * Falls ein Board fälschlich auf 1920×1080 gestreckt wurde, werden
- * Positionen/Größen proportional zurückgerechnet — ohne Drehung.
+ * Koordinaten-Migration Feld→Viewport: siehe migrateTacticsDocument in fieldLayout.ts.
  */
 export function migrateDocumentToCurrentField(doc: TacticsBoardDocument): TacticsBoardDocument {
   const fromW = doc.fieldWidth || FIELD_WIDTH;

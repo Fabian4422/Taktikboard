@@ -1,4 +1,12 @@
-import { FIELD_HEIGHT, FIELD_WIDTH, type FieldRotation, type FieldView } from "./types";
+import {
+  FIELD_HEIGHT,
+  FIELD_WIDTH,
+  scaleBoardElements,
+  type BoardElement,
+  type FieldRotation,
+  type FieldView,
+  type TacticsBoardDocument,
+} from "./types";
 
 export interface FieldViewport {
   x: number;
@@ -132,8 +140,8 @@ export function showsFieldStripes(_view: FieldView): boolean {
 }
 
 /**
- * Effektive Canvas-Drehung: nur manuelle fieldRotation.
- * Element-X/Y bleiben unverändert — die Konva-Group dreht die Darstellung.
+ * Effektive Canvas-Drehung: nur manuelle fieldRotation (Rasen/Linien).
+ * Objekt-Koordinaten liegen im starren Viewport-Raum (X rechts, Y unten).
  */
 export function getEffectiveRotation(_view: FieldView, userRotation: FieldRotation): FieldRotation {
   return userRotation;
@@ -158,11 +166,73 @@ export function normalizeDegrees(degrees: number): number {
 }
 
 /**
- * Element-Rotation im Feld-Raum, damit das Icon relativ zum Viewport aufrecht (0°) steht.
- * Bei fieldRotation 90° ⇒ Element-Rotation 270° (−90°).
+ * Früher: Element-Rotation im Feldraum für Viewport-Aufrecht.
+ * Objekte liegen jetzt im Viewport-Raum → Aufrecht = 0°.
  */
-export function viewportUprightElementRotation(fieldRotation: FieldRotation): number {
-  return normalizeDegrees(-fieldRotation);
+export function viewportUprightElementRotation(_fieldRotation: FieldRotation): number {
+  return 0;
+}
+
+/**
+ * Feldraum → Viewport-Raum (starr am Bildschirm, X rechts / Y unten).
+ * Entspricht der früheren Konva-CW-Rotation um den Viewport-Mittelpunkt.
+ */
+export function fieldPointToViewport(
+  fx: number,
+  fy: number,
+  viewport: FieldViewport,
+  rotation: FieldRotation,
+): { x: number; y: number } {
+  const rotated = getRotatedViewportSize(viewport, rotation);
+  const dx = fx - (viewport.x + viewport.w / 2);
+  const dy = fy - (viewport.y + viewport.h / 2);
+  const rad = (rotation * Math.PI) / 180;
+  const cos = Math.cos(rad);
+  const sin = Math.sin(rad);
+  // Canvas/Konva (y-down): positive Winkel = Uhrzeigersinn
+  return {
+    x: rotated.w / 2 + dx * cos - dy * sin,
+    y: rotated.h / 2 + dx * sin + dy * cos,
+  };
+}
+
+/** Viewport-Raum → Feldraum (Inverse von fieldPointToViewport). */
+export function viewportPointToField(
+  vx: number,
+  vy: number,
+  viewport: FieldViewport,
+  rotation: FieldRotation,
+): { x: number; y: number } {
+  const rotated = getRotatedViewportSize(viewport, rotation);
+  const dx = vx - rotated.w / 2;
+  const dy = vy - rotated.h / 2;
+  const rad = (-rotation * Math.PI) / 180;
+  const cos = Math.cos(rad);
+  const sin = Math.sin(rad);
+  return {
+    x: viewport.x + viewport.w / 2 + dx * cos - dy * sin,
+    y: viewport.y + viewport.h / 2 + dx * sin + dy * cos,
+  };
+}
+
+export function fieldElementToViewport(
+  element: { x: number; y: number; points?: number[]; rotation?: number },
+  viewport: FieldViewport,
+  rotation: FieldRotation,
+): { x: number; y: number; points?: number[]; rotation?: number } {
+  const pos = fieldPointToViewport(element.x, element.y, viewport, rotation);
+  let points: number[] | undefined;
+  if (element.points && element.points.length >= 2) {
+    points = [];
+    for (let i = 0; i < element.points.length; i += 2) {
+      const p = fieldPointToViewport(element.points[i], element.points[i + 1], viewport, rotation);
+      points.push(p.x, p.y);
+    }
+  }
+  // Icon-Rotation war relativ zum Feldraum; im Viewport: Feldrotation herausrechnen
+  const nextRotation =
+    element.rotation != null ? normalizeDegrees(element.rotation + rotation) : undefined;
+  return { x: pos.x, y: pos.y, points, rotation: nextRotation };
 }
 
 export const FIELD_VIEW_LABELS: Record<FieldView, string> = {
@@ -172,3 +242,53 @@ export const FIELD_VIEW_LABELS: Record<FieldView, string> = {
   penalty: "Strafraum",
   free: "Freie Fläche",
 };
+
+/**
+ * Migriert Legacy-Feldraum-Koordinaten in den starren Viewport-Raum
+ * und stellt ggf. das FIFA-Feldmaß wieder her.
+ */
+export function migrateTacticsDocument(doc: TacticsBoardDocument): TacticsBoardDocument {
+  let next: TacticsBoardDocument = { ...doc };
+
+  const fromW = next.fieldWidth || FIELD_WIDTH;
+  const fromH = next.fieldHeight || FIELD_HEIGHT;
+  if (fromW !== FIELD_WIDTH || fromH !== FIELD_HEIGHT) {
+    next = {
+      ...next,
+      fieldWidth: FIELD_WIDTH,
+      fieldHeight: FIELD_HEIGHT,
+      keyframes: next.keyframes.map((kf) => ({
+        ...kf,
+        elements: scaleBoardElements(kf.elements, fromW, fromH, FIELD_WIDTH, FIELD_HEIGHT),
+      })),
+    };
+  } else {
+    next = { ...next, fieldWidth: FIELD_WIDTH, fieldHeight: FIELD_HEIGHT };
+  }
+
+  if (next.coordSpace === "viewport") {
+    return next;
+  }
+
+  const fieldView = next.fieldView ?? "full";
+  const rotation = getEffectiveRotation(fieldView, next.fieldRotation ?? 90);
+  const viewport = getFieldViewport(fieldView);
+
+  return {
+    ...next,
+    coordSpace: "viewport",
+    keyframes: next.keyframes.map((kf) => ({
+      ...kf,
+      elements: kf.elements.map((el) => {
+        const converted = fieldElementToViewport(el, viewport, rotation);
+        return {
+          ...el,
+          x: converted.x,
+          y: converted.y,
+          points: converted.points,
+          rotation: converted.rotation ?? el.rotation,
+        } satisfies BoardElement;
+      }),
+    })),
+  };
+}

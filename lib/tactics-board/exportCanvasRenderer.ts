@@ -487,6 +487,9 @@ export function drawExportFrame(
 
   ctx.save();
   ctx.translate(contentOffsetX, contentOffsetY);
+
+  // 1) Nur Rasen/Linien mit Feldrotation
+  ctx.save();
   ctx.translate(rotated.w / 2, rotated.h / 2);
   ctx.rotate((rotation * Math.PI) / 180);
   ctx.translate(-viewport.w / 2, -viewport.h / 2);
@@ -509,14 +512,22 @@ export function drawExportFrame(
   if (showsFieldLines(fieldView)) {
     drawFieldLines(ctx);
   }
+  ctx.restore();
+
+  // 2) Objekte im starren Viewport-Raum (X rechts, Y unten)
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(0, 0, rotated.w, rotated.h);
+  ctx.clip();
 
   for (const el of elements) {
     if (el.points && el.points.length >= 4) {
       drawLineElement(ctx, el);
     } else {
-      drawMarkerElement(ctx, el, rotation);
+      drawMarkerElement(ctx, el, 0);
     }
   }
+  ctx.restore();
 
   ctx.restore();
   ctx.setTransform(1, 0, 0, 1, 0, 0);
