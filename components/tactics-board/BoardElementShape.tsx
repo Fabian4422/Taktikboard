@@ -27,6 +27,7 @@ interface BoardElementShapeProps {
   /** Gegenrotation für Labels, damit Text bei Feld-Drehung waagerecht bleibt */
   labelCounterRotation?: number;
   onSelect: () => void;
+  onDragStart?: () => void;
   onDragEnd: (x: number, y: number) => void;
   onLineDragEnd: (dx: number, dy: number) => void;
   onTransformEnd?: (x: number, y: number, rotation: number) => void;
@@ -38,6 +39,7 @@ export function BoardElementShape({
   draggable,
   labelCounterRotation = 0,
   onSelect,
+  onDragStart,
   onDragEnd,
   onLineDragEnd,
   onTransformEnd,
@@ -78,6 +80,7 @@ export function BoardElementShape({
     onDragStart: (e: { cancelBubble: boolean }) => {
       e.cancelBubble = true;
       onSelect();
+      onDragStart?.();
     },
     onClick: (e: { cancelBubble: boolean; evt?: Event }) => {
       e.cancelBubble = true;

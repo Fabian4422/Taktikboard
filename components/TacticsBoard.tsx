@@ -60,6 +60,7 @@ export function TacticsBoard({ exerciseId, initialName }: TacticsBoardProps) {
     percent: number;
   } | null>(null);
   const [libraryOpen, setLibraryOpen] = useState(false);
+  const [isDraggingObject, setIsDraggingObject] = useState(false);
   const pageTitleRef = useRef(
     typeof document === "undefined" ? "Taktikboard" : document.title,
   );
@@ -268,7 +269,8 @@ export function TacticsBoard({ exerciseId, initialName }: TacticsBoardProps) {
     };
   }, [isFullscreen]);
 
-  const showInspector = !isFullscreen && !exportState && Boolean(board.selectedElement);
+  const showInspector =
+    !isFullscreen && !exportState && !isDraggingObject && Boolean(board.selectedElement);
 
   const canPlay = board.document.keyframes.length >= 2;
   const isExporting = Boolean(exportState);
@@ -480,16 +482,14 @@ export function TacticsBoard({ exerciseId, initialName }: TacticsBoardProps) {
                 lineDraft={isFullscreen || isExporting ? null : board.lineDraft}
                 isPlaying={board.isPlaying}
                 onSelect={(id) => {
+                  // Stempel-Modus bleibt aktiv — nur Selektion setzen, Werkzeug nicht wechseln
                   board.setSelectedId(id);
-                  // Objekt-Klick: Auswahlwerkzeug aktivieren, damit Panel + Drag konsistent sind
-                  if (id != null && board.toolMode !== "select") {
-                    board.selectTool("select");
-                  }
                 }}
                 onElementMove={board.handleElementMove}
                 onLineMove={board.handleLineMove}
                 onFieldClick={board.handleFieldClick}
                 onElementTransform={board.handleElementTransform}
+                onDraggingChange={setIsDraggingObject}
                 fieldView={board.fieldView}
                 fieldRotation={board.fieldRotation}
                 fillParent

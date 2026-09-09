@@ -31,6 +31,8 @@ interface FieldCanvasProps {
   onLineMove: (id: string, dx: number, dy: number) => void;
   onFieldClick: (x: number, y: number) => void;
   onElementTransform?: (id: string, x: number, y: number, rotation: number) => void;
+  /** true während aktivem Drag — Panel ausblenden */
+  onDraggingChange?: (dragging: boolean) => void;
   stageRef?: React.RefObject<Konva.Stage | null>;
   /** 16:9-Rahmen in die verfügbare Fläche einpassen (Vollbild / Export) */
   fillParent?: boolean;
@@ -195,6 +197,7 @@ export function FieldCanvas({
   onLineMove,
   onFieldClick,
   onElementTransform,
+  onDraggingChange,
   stageRef: externalRef,
   fillParent = false,
   preview = false,
@@ -400,11 +403,18 @@ export function FieldCanvas({
                     key={el.id}
                     element={el}
                     selected={!preview && el.id === selectedId}
-                    draggable={!preview && !isPlaying}
+                    draggable={!preview && !isPlaying && toolMode === "select"}
                     labelCounterRotation={0}
                     onSelect={() => onSelect(el.id)}
-                    onDragEnd={(x, y) => onElementMove(el.id, x, y)}
-                    onLineDragEnd={(dx, dy) => onLineMove(el.id, dx, dy)}
+                    onDragStart={() => onDraggingChange?.(true)}
+                    onDragEnd={(x, y) => {
+                      onDraggingChange?.(false);
+                      onElementMove(el.id, x, y);
+                    }}
+                    onLineDragEnd={(dx, dy) => {
+                      onDraggingChange?.(false);
+                      onLineMove(el.id, dx, dy);
+                    }}
                     onTransformEnd={(x, y, rotationDeg) =>
                       onElementTransform?.(el.id, x, y, rotationDeg)
                     }
