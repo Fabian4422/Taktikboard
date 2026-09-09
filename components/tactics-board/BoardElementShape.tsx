@@ -26,12 +26,18 @@ interface BoardElementShapeProps {
   draggable: boolean;
   /** Gegenrotation für Labels, damit Text bei Feld-Drehung waagerecht bleibt */
   labelCounterRotation?: number;
+  /** Reiner Klick (ohne Drag) — öffnet Eigenschaften-Panel */
   onSelect: () => void;
+  /** Pointer-Down auf Objekt — Panel sofort schließen (vor Klick/Drag-Entscheidung) */
+  onPointerIntent?: () => void;
+  /** Drag hat Schwelle überschritten — Panel bleibt zu */
   onDragStart?: () => void;
   onDragEnd: (x: number, y: number) => void;
   onLineDragEnd: (dx: number, dy: number) => void;
   onTransformEnd?: (x: number, y: number, rotation: number) => void;
 }
+
+const DRAG_THRESHOLD_PX = 8;
 
 export function BoardElementShape({
   element,
@@ -39,6 +45,7 @@ export function BoardElementShape({
   draggable,
   labelCounterRotation = 0,
   onSelect,
+  onPointerIntent,
   onDragStart,
   onDragEnd,
   onLineDragEnd,
@@ -47,6 +54,8 @@ export function BoardElementShape({
   const meta = ELEMENT_META[element.type];
   const shapeRef = useRef(null);
   const transformerRef = useRef(null);
+  const pointerStartRef = useRef<{ x: number; y: number } | null>(null);
+  const didDragRef = useRef(false);
   const canRotate = isRotatable(element.type);
   const elementScale = getElementScale(element);
   const uprightLabelRotation = -(labelCounterRotation + (element.rotation ?? 0));
@@ -66,27 +75,70 @@ export function BoardElementShape({
     }
   }, [selected, canRotate, draggable, element.id]);
 
+  const getClientPoint = (e: {
+    evt?: MouseEvent | TouchEvent;
+  }): { x: number; y: number } | null => {
+    const evt = e.evt;
+    if (!evt) return null;
+    if ("touches" in evt && evt.touches[0]) {
+      return { x: evt.touches[0].clientX, y: evt.touches[0].clientY };
+    }
+    if ("changedTouches" in evt && evt.changedTouches[0]) {
+      return { x: evt.changedTouches[0].clientX, y: evt.changedTouches[0].clientY };
+    }
+    if ("clientX" in evt) {
+      return { x: evt.clientX, y: evt.clientY };
+    }
+    return null;
+  };
+
   const selectHandlers = {
     name: "board-element" as const,
-    onMouseDown: (e: { cancelBubble: boolean; evt?: Event }) => {
+    onMouseDown: (e: { cancelBubble: boolean; evt?: MouseEvent | TouchEvent }) => {
       e.cancelBubble = true;
-      onSelect();
-      // Panel sofort ausblenden, noch bevor Konva den Drag-Threshold erreicht
-      if (draggable) onDragStart?.();
+      const pt = getClientPoint(e);
+      pointerStartRef.current = pt;
+      didDragRef.current = false;
+      onPointerIntent?.();
     },
-    onTouchStart: (e: { cancelBubble: boolean; evt?: Event }) => {
+    onTouchStart: (e: { cancelBubble: boolean; evt?: MouseEvent | TouchEvent }) => {
       e.cancelBubble = true;
-      e.evt?.preventDefault?.();
-      onSelect();
-      if (draggable) onDragStart?.();
+      e.evt && "preventDefault" in e.evt && e.evt.preventDefault?.();
+      const pt = getClientPoint(e);
+      pointerStartRef.current = pt;
+      didDragRef.current = false;
+      onPointerIntent?.();
+    },
+    onMouseMove: (e: { evt?: MouseEvent | TouchEvent }) => {
+      if (!pointerStartRef.current || didDragRef.current || !draggable) return;
+      const pt = getClientPoint(e);
+      if (!pt) return;
+      const dist = Math.hypot(pt.x - pointerStartRef.current.x, pt.y - pointerStartRef.current.y);
+      if (dist >= DRAG_THRESHOLD_PX) {
+        didDragRef.current = true;
+        onDragStart?.();
+      }
+    },
+    onTouchMove: (e: { evt?: MouseEvent | TouchEvent }) => {
+      if (!pointerStartRef.current || didDragRef.current || !draggable) return;
+      const pt = getClientPoint(e);
+      if (!pt) return;
+      const dist = Math.hypot(pt.x - pointerStartRef.current.x, pt.y - pointerStartRef.current.y);
+      if (dist >= DRAG_THRESHOLD_PX) {
+        didDragRef.current = true;
+        onDragStart?.();
+      }
     },
     onDragStart: (e: { cancelBubble: boolean }) => {
       e.cancelBubble = true;
-      onSelect();
+      if (didDragRef.current) return;
+      didDragRef.current = true;
       onDragStart?.();
     },
-    onClick: (e: { cancelBubble: boolean; evt?: Event }) => {
+    onClick: (e: { cancelBubble: boolean }) => {
       e.cancelBubble = true;
+      // Nur reiner Klick (kein Drag) öffnet das Eigenschaften-Panel
+      if (didDragRef.current) return;
       onSelect();
     },
   };
@@ -112,6 +164,7 @@ export function BoardElementShape({
           const node = e.target;
           onLineDragEnd(node.x(), node.y());
           node.position({ x: 0, y: 0 });
+          pointerStartRef.current = null;
         }}
       >
         <Line
@@ -150,8 +203,10 @@ export function BoardElementShape({
     scaleX: elementScale,
     scaleY: elementScale,
     draggable,
-    onDragEnd: (e: { target: { x: () => number; y: () => number } }) =>
-      onDragEnd(e.target.x(), e.target.y()),
+    onDragEnd: (e: { target: { x: () => number; y: () => number } }) => {
+      onDragEnd(e.target.x(), e.target.y());
+      pointerStartRef.current = null;
+    },
     onTransformEnd: (e: { target: { x: () => number; y: () => number; rotation: () => number } }) => {
       const node = e.target;
       onTransformEnd?.(node.x(), node.y(), node.rotation());

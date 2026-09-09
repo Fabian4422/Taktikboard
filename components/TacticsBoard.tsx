@@ -61,6 +61,8 @@ export function TacticsBoard({ exerciseId, initialName }: TacticsBoardProps) {
   } | null>(null);
   const [libraryOpen, setLibraryOpen] = useState(false);
   const [isDraggingObject, setIsDraggingObject] = useState(false);
+  /** Panel nur nach reinem Klick, nicht nach Drag */
+  const [inspectorOpen, setInspectorOpen] = useState(false);
 
   useEffect(() => {
     if (!isDraggingObject) return;
@@ -286,7 +288,11 @@ export function TacticsBoard({ exerciseId, initialName }: TacticsBoardProps) {
   }, [isFullscreen]);
 
   const showInspector =
-    !isFullscreen && !exportState && !isDraggingObject && Boolean(board.selectedElement);
+    !isFullscreen &&
+    !exportState &&
+    !isDraggingObject &&
+    inspectorOpen &&
+    Boolean(board.selectedElement);
 
   const canPlay = board.document.keyframes.length >= 2;
   const isExporting = Boolean(exportState);
@@ -498,14 +504,23 @@ export function TacticsBoard({ exerciseId, initialName }: TacticsBoardProps) {
                 lineDraft={isFullscreen || isExporting ? null : board.lineDraft}
                 isPlaying={board.isPlaying}
                 onSelect={(id) => {
-                  // Stempel-Modus bleibt aktiv — nur Selektion setzen, Werkzeug nicht wechseln
+                  // Stempel bleibt aktiv; Panel nur bei explizitem Select (reiner Klick)
                   board.setSelectedId(id);
+                  setInspectorOpen(id != null);
+                  setIsDraggingObject(false);
                 }}
                 onElementMove={board.handleElementMove}
                 onLineMove={board.handleLineMove}
                 onFieldClick={board.handleFieldClick}
                 onElementTransform={board.handleElementTransform}
-                onDraggingChange={setIsDraggingObject}
+                onDraggingChange={(dragging, elementId) => {
+                  setIsDraggingObject(dragging);
+                  if (dragging) {
+                    setInspectorOpen(false);
+                    if (elementId) board.setSelectedId(elementId);
+                  }
+                }}
+                onElementPointerIntent={() => setInspectorOpen(false)}
                 fieldView={board.fieldView}
                 fieldRotation={board.fieldRotation}
                 fillParent
