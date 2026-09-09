@@ -66,12 +66,23 @@ export function BoardElementShape({
 
   const selectHandlers = {
     name: "board-element" as const,
-    onClick: (e: { cancelBubble: boolean; evt?: Event }) => {
+    onMouseDown: (e: { cancelBubble: boolean; evt?: Event }) => {
+      e.cancelBubble = true;
+      onSelect();
+    },
+    onTouchStart: (e: { cancelBubble: boolean; evt?: Event }) => {
       e.cancelBubble = true;
       e.evt?.preventDefault?.();
       onSelect();
     },
-    // Kein onTap parallel zu onClick — verhindert Doppel-Events auf Touch-Geräten
+    onDragStart: (e: { cancelBubble: boolean }) => {
+      e.cancelBubble = true;
+      onSelect();
+    },
+    onClick: (e: { cancelBubble: boolean; evt?: Event }) => {
+      e.cancelBubble = true;
+      onSelect();
+    },
   };
 
   if (element.points && element.points.length >= 4) {

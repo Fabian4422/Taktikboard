@@ -275,7 +275,7 @@ export function FieldCanvas({
       getParent?: () => unknown;
     };
   }) => {
-    // Touch erzeugt oft Tap + Click → nur einmal verarbeiten
+    // Touch erzeugt oft Tap + Click → nur einmal verarbeiten (nur für Leerklicks/Platzieren)
     const now = Date.now();
     if (now - lastPointerActionRef.current < 160) {
       e.evt?.preventDefault?.();
@@ -283,22 +283,26 @@ export function FieldCanvas({
     }
     lastPointerActionRef.current = now;
 
-    e.evt?.preventDefault?.();
-
     let node: { name?: () => string; getParent?: () => unknown } | null = e.target;
     const stage = e.target.getStage();
     while (node && node !== stage) {
+      // Klick auf Objekt: Selection läuft über BoardElementShape (pointerdown) —
+      // Stage darf weder deselektieren noch zusätzlich platzieren.
       if (node.name?.() === "board-element") return;
       node = (node.getParent?.() as typeof node) ?? null;
     }
 
-    onSelect(null);
     if (preview || isPlaying) return;
-    if (toolMode !== "select" && !isPlaying) {
-      const pointer = fieldGroupRef.current?.getRelativePointerPosition();
-      if (!pointer) return;
-      onFieldClick(pointer.x, pointer.y);
+
+    // Freie Fläche: Selektion nur schließen, wenn kein Stempel-/Zeichenwerkzeug aktiv ist
+    if (toolMode === "select") {
+      onSelect(null);
+      return;
     }
+
+    const pointer = fieldGroupRef.current?.getRelativePointerPosition();
+    if (!pointer) return;
+    onFieldClick(pointer.x, pointer.y);
   };
 
   const handleStageMove = () => {
@@ -396,7 +400,7 @@ export function FieldCanvas({
                     key={el.id}
                     element={el}
                     selected={!preview && el.id === selectedId}
-                    draggable={!preview && !isPlaying && toolMode === "select"}
+                    draggable={!preview && !isPlaying}
                     labelCounterRotation={0}
                     onSelect={() => onSelect(el.id)}
                     onDragEnd={(x, y) => onElementMove(el.id, x, y)}

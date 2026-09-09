@@ -479,7 +479,13 @@ export function TacticsBoard({ exerciseId, initialName }: TacticsBoardProps) {
                 toolMode={board.toolMode}
                 lineDraft={isFullscreen || isExporting ? null : board.lineDraft}
                 isPlaying={board.isPlaying}
-                onSelect={board.setSelectedId}
+                onSelect={(id) => {
+                  board.setSelectedId(id);
+                  // Objekt-Klick: Auswahlwerkzeug aktivieren, damit Panel + Drag konsistent sind
+                  if (id != null && board.toolMode !== "select") {
+                    board.selectTool("select");
+                  }
+                }}
                 onElementMove={board.handleElementMove}
                 onLineMove={board.handleLineMove}
                 onFieldClick={board.handleFieldClick}
