@@ -19,6 +19,7 @@ import {
   DEFAULT_PLAYER_SCALE_PERCENT,
   DEFAULT_CONE_COLOR,
   migrateDocumentToCurrentField,
+  getElementScale,
   type FieldRotation,
   type FieldView,
   type KeyframeSpeed,
@@ -35,6 +36,137 @@ const DEFAULT_DOCUMENT: TacticsBoardDocument = {
 };
 
 const LINE_TYPES = new Set(["pass-line", "run-path", "dribble-path", "guide-line"]);
+const CASCADE_POSITION_EPS = 1.5;
+const CASCADE_ROTATION_EPS = 1;
+const CASCADE_SCALE_EPS = 0.01;
+
+function cloneBoardElement(el: BoardElement): BoardElement {
+  return {
+    ...el,
+    points: el.points ? [...el.points] : undefined,
+  };
+}
+
+function pointsDiffer(
+  a: number[] | undefined,
+  b: number[] | undefined,
+  eps = CASCADE_POSITION_EPS,
+): boolean {
+  if (!a && !b) return false;
+  if (!a || !b || a.length !== b.length) return true;
+  for (let i = 0; i < a.length; i++) {
+    if (Math.abs((a[i] ?? 0) - (b[i] ?? 0)) > eps) return true;
+  }
+  return false;
+}
+
+/** True, wenn der Folgeschritt für dieses Objekt schon manuell abweicht. */
+function hasManualOverride(prev: BoardElement, curr: BoardElement): boolean {
+  if (Math.hypot(curr.x - prev.x, curr.y - prev.y) > CASCADE_POSITION_EPS) return true;
+  const rotA = prev.rotation ?? 0;
+  const rotB = curr.rotation ?? 0;
+  let rotDiff = Math.abs(rotB - rotA) % 360;
+  if (rotDiff > 180) rotDiff = 360 - rotDiff;
+  if (rotDiff > CASCADE_ROTATION_EPS) return true;
+  if (Math.abs(getElementScale(curr) - getElementScale(prev)) > CASCADE_SCALE_EPS) return true;
+  if ((curr.color ?? "") !== (prev.color ?? "")) return true;
+  if (curr.number !== prev.number) return true;
+  if (pointsDiffer(prev.points, curr.points)) return true;
+  return false;
+}
+
+function findElement(elements: BoardElement[], id: string): BoardElement | undefined {
+  return elements.find((el) => el.id === id);
+}
+
+/**
+ * Schreibt eine Element-Änderung in den aktuellen Keyframe und übernimmt sie
+ * kaskadierend in Folgeschritte, solange das Objekt dort noch dem vorherigen
+ * Schritt entspricht (kein manueller Override).
+ */
+function applyCascadingElementChange(
+  keyframes: Keyframe[],
+  fromIndex: number,
+  elementId: string,
+  nextElement: BoardElement | null,
+): Keyframe[] {
+  const originals = keyframes.map((kf) => cloneElements(kf.elements));
+  const next = keyframes.map((kf) => deepCloneKeyframe(kf));
+
+  const currentEls = next[fromIndex].elements;
+  if (nextElement === null) {
+    next[fromIndex] = {
+      ...next[fromIndex],
+      elements: currentEls.filter((el) => el.id !== elementId),
+    };
+  } else {
+    const idx = currentEls.findIndex((el) => el.id === elementId);
+    if (idx >= 0) {
+      const els = [...currentEls];
+      els[idx] = cloneBoardElement(nextElement);
+      next[fromIndex] = { ...next[fromIndex], elements: els };
+    } else {
+      next[fromIndex] = {
+        ...next[fromIndex],
+        elements: [...currentEls, cloneBoardElement(nextElement)],
+      };
+    }
+  }
+
+  for (let k = fromIndex + 1; k < next.length; k++) {
+    const prevOrig = findElement(originals[k - 1], elementId);
+    const currOrig = findElement(originals[k], elementId);
+
+    if (nextElement === null) {
+      if (!currOrig) break;
+      if (prevOrig && hasManualOverride(prevOrig, currOrig)) break;
+      next[k] = {
+        ...next[k],
+        elements: next[k].elements.filter((el) => el.id !== elementId),
+      };
+      continue;
+    }
+
+    if (!currOrig) {
+      // Objekt fehlte im Folgeschritt — Kette beenden (außer reines Add unten).
+      break;
+    }
+    if (!prevOrig || hasManualOverride(prevOrig, currOrig)) break;
+
+    const source = findElement(next[k - 1].elements, elementId);
+    if (!source) break;
+    next[k] = {
+      ...next[k],
+      elements: next[k].elements.map((el) =>
+        el.id === elementId ? cloneBoardElement(source) : el,
+      ),
+    };
+  }
+
+  return next;
+}
+
+function applyCascadingElementAdd(
+  keyframes: Keyframe[],
+  fromIndex: number,
+  element: BoardElement,
+): Keyframe[] {
+  const next = keyframes.map((kf) => deepCloneKeyframe(kf));
+  next[fromIndex] = {
+    ...next[fromIndex],
+    elements: [...next[fromIndex].elements, cloneBoardElement(element)],
+  };
+
+  for (let k = fromIndex + 1; k < next.length; k++) {
+    if (findElement(next[k].elements, element.id)) break;
+    next[k] = {
+      ...next[k],
+      elements: [...next[k].elements, cloneBoardElement(element)],
+    };
+  }
+
+  return next;
+}
 
 function nextPlayerNumber(
   elements: BoardElement[],
@@ -81,15 +213,32 @@ export function useTacticsBoard(initialDocument?: TacticsBoardDocument) {
     }
   }, [currentKeyframe, isPlaying, isPaused, currentStepIndex]);
 
-  const updateCurrentElements = useCallback(
-    (updater: (elements: BoardElement[]) => BoardElement[]) => {
+  const mutateElementWithCascade = useCallback(
+    (elementId: string, mutate: (el: BoardElement) => BoardElement | null) => {
       setDocument((prev) => {
-        const keyframes = [...prev.keyframes];
-        const kf = deepCloneKeyframe(keyframes[currentStepIndex]);
-        kf.elements = updater(kf.elements);
-        keyframes[currentStepIndex] = kf;
-        return { ...prev, keyframes };
+        const current = findElement(prev.keyframes[currentStepIndex]?.elements ?? [], elementId);
+        if (!current) return prev;
+        const nextElement = mutate(current);
+        return {
+          ...prev,
+          keyframes: applyCascadingElementChange(
+            prev.keyframes,
+            currentStepIndex,
+            elementId,
+            nextElement,
+          ),
+        };
       });
+    },
+    [currentStepIndex],
+  );
+
+  const addElementWithCascade = useCallback(
+    (element: BoardElement) => {
+      setDocument((prev) => ({
+        ...prev,
+        keyframes: applyCascadingElementAdd(prev.keyframes, currentStepIndex, element),
+      }));
     },
     [currentStepIndex],
   );
@@ -97,53 +246,45 @@ export function useTacticsBoard(initialDocument?: TacticsBoardDocument) {
   const handleElementMove = useCallback(
     (id: string, x: number, y: number) => {
       if (isPlaying) return;
-      updateCurrentElements((elements) =>
-        elements.map((el) => (el.id === id ? { ...el, x, y } : el)),
-      );
+      mutateElementWithCascade(id, (el) => ({ ...el, x, y }));
     },
-    [isPlaying, updateCurrentElements],
+    [isPlaying, mutateElementWithCascade],
   );
 
   const handleElementTransform = useCallback(
     (id: string, x: number, y: number, rotation: number) => {
       if (isPlaying) return;
-      updateCurrentElements((elements) =>
-        elements.map((el) => (el.id === id ? { ...el, x, y, rotation } : el)),
-      );
+      mutateElementWithCascade(id, (el) => ({ ...el, x, y, rotation }));
     },
-    [isPlaying, updateCurrentElements],
+    [isPlaying, mutateElementWithCascade],
   );
 
   const rotateSelected = useCallback(
     (delta: number) => {
       if (!selectedId || isPlaying) return;
-      updateCurrentElements((elements) =>
-        elements.map((el) => {
-          if (el.id !== selectedId || !isRotatable(el.type)) return el;
-          const next = ((el.rotation ?? 0) + delta) % 360;
-          return { ...el, rotation: next < 0 ? next + 360 : next };
-        }),
-      );
+      mutateElementWithCascade(selectedId, (el) => {
+        if (!isRotatable(el.type)) return el;
+        const next = ((el.rotation ?? 0) + delta) % 360;
+        return { ...el, rotation: next < 0 ? next + 360 : next };
+      });
     },
-    [isPlaying, selectedId, updateCurrentElements],
+    [isPlaying, mutateElementWithCascade, selectedId],
   );
 
   const handleLineMove = useCallback(
     (id: string, dx: number, dy: number) => {
       if (isPlaying) return;
-      updateCurrentElements((elements) =>
-        elements.map((el) => {
-          if (el.id !== id || !el.points) return el;
-          return {
-            ...el,
-            x: el.x + dx,
-            y: el.y + dy,
-            points: el.points.map((v, i) => (i % 2 === 0 ? v + dx : v + dy)),
-          };
-        }),
-      );
+      mutateElementWithCascade(id, (el) => {
+        if (!el.points) return el;
+        return {
+          ...el,
+          x: el.x + dx,
+          y: el.y + dy,
+          points: el.points.map((v, i) => (i % 2 === 0 ? v + dx : v + dy)),
+        };
+      });
     },
-    [isPlaying, updateCurrentElements],
+    [isPlaying, mutateElementWithCascade],
   );
 
   const handleFieldClick = useCallback(
@@ -164,7 +305,7 @@ export function useTacticsBoard(initialDocument?: TacticsBoardDocument) {
           points: [lineDraft.x, lineDraft.y, x, y],
         };
 
-        updateCurrentElements((els) => [...els, newElement]);
+        addElementWithCascade(newElement);
         setLineDraft(null);
         setToolMode("select");
         setSelectedId(newElement.id);
@@ -193,18 +334,18 @@ export function useTacticsBoard(initialDocument?: TacticsBoardDocument) {
         base.number = nextPlayerNumber(currentKeyframe.elements, "player-d");
       }
 
-      updateCurrentElements((els) => [...els, base]);
+      addElementWithCascade(base);
       setSelectedId(base.id);
       setToolMode("select");
     },
     [
+      addElementWithCascade,
       coneColor,
       currentKeyframe.elements,
       isPlaying,
       lineDraft,
       playerScalePercent,
       toolMode,
-      updateCurrentElements,
     ],
   );
 
@@ -238,18 +379,16 @@ export function useTacticsBoard(initialDocument?: TacticsBoardDocument) {
 
   const deleteSelected = useCallback(() => {
     if (!selectedId) return;
-    updateCurrentElements((els) => els.filter((el) => el.id !== selectedId));
+    mutateElementWithCascade(selectedId, () => null);
     setSelectedId(null);
-  }, [selectedId, updateCurrentElements]);
+  }, [mutateElementWithCascade, selectedId]);
 
   const updateSelectedElement = useCallback(
     (patch: Partial<Pick<BoardElement, "x" | "y" | "scale" | "number" | "color">>) => {
       if (!selectedId || isPlaying) return;
-      updateCurrentElements((elements) =>
-        elements.map((el) => (el.id === selectedId ? { ...el, ...patch } : el)),
-      );
+      mutateElementWithCascade(selectedId, (el) => ({ ...el, ...patch }));
     },
-    [isPlaying, selectedId, updateCurrentElements],
+    [isPlaying, mutateElementWithCascade, selectedId],
   );
 
   const setPlayerScalePercent = useCallback((percent: number) => {
@@ -494,7 +633,6 @@ export function useTacticsBoard(initialDocument?: TacticsBoardDocument) {
     setPlaybackRate,
     setKeyframeSpeed,
     setAllKeyframeSpeeds,
-    updateCurrentElements,
     updateSelectedElement,
   };
 }

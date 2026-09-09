@@ -140,36 +140,6 @@ export function Toolbar({
     <aside className="flex w-full flex-col gap-4 lg:w-56 lg:shrink-0">
       <div>
         <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
-          Spielfeld
-        </h3>
-        <button
-          type="button"
-          onClick={onRotateField}
-          className="mb-2 w-full rounded-lg border border-emerald-500/40 bg-emerald-500/10 px-3 py-2 text-sm font-medium text-emerald-300 hover:border-emerald-400 hover:bg-emerald-500/20"
-        >
-          Spielfeld drehen (90°) · {orientation}
-        </button>
-        <button
-          type="button"
-          onClick={onClearBoard}
-          className="mb-2 w-full rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm font-medium text-amber-300 hover:border-amber-400 hover:bg-amber-500/20"
-        >
-          Neues Board / Spielfeld leeren
-        </button>
-        <div className="flex flex-wrap gap-2 lg:flex-col">
-          {(Object.keys(FIELD_VIEW_LABELS) as FieldView[]).map((view) => (
-            <ToolButton
-              key={view}
-              active={fieldView === view}
-              label={FIELD_VIEW_LABELS[view]}
-              onClick={() => onFieldViewChange(view)}
-            />
-          ))}
-        </div>
-      </div>
-
-      <div>
-        <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
           Werkzeug
         </h3>
         <ToolButton
@@ -269,6 +239,36 @@ export function Toolbar({
           Auswahl löschen (Entf)
         </button>
       )}
+
+      <div>
+        <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
+          Spielfeld
+        </h3>
+        <button
+          type="button"
+          onClick={onRotateField}
+          className="mb-2 w-full rounded-lg border border-emerald-500/40 bg-emerald-500/10 px-3 py-2 text-sm font-medium text-emerald-300 hover:border-emerald-400 hover:bg-emerald-500/20"
+        >
+          Spielfeld drehen (90°) · {orientation}
+        </button>
+        <button
+          type="button"
+          onClick={onClearBoard}
+          className="mb-2 w-full rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm font-medium text-amber-300 hover:border-amber-400 hover:bg-amber-500/20"
+        >
+          Neues Board / Spielfeld leeren
+        </button>
+        <div className="flex flex-wrap gap-2 lg:flex-col">
+          {(Object.keys(FIELD_VIEW_LABELS) as FieldView[]).map((view) => (
+            <ToolButton
+              key={view}
+              active={fieldView === view}
+              label={FIELD_VIEW_LABELS[view]}
+              onClick={() => onFieldViewChange(view)}
+            />
+          ))}
+        </div>
+      </div>
     </aside>
   );
 }

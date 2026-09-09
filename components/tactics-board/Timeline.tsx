@@ -111,6 +111,33 @@ export function Timeline({
         </div>
       )}
 
+      <div className="mb-3 flex flex-wrap items-center gap-2">
+        <button
+          type="button"
+          onClick={onAddStep}
+          disabled={busy}
+          className="rounded-lg border border-emerald-500/50 bg-emerald-500/15 px-4 py-2 text-sm font-medium text-emerald-200 hover:border-emerald-400 hover:bg-emerald-500/25 disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          + Neuer Schritt
+        </button>
+        <button
+          type="button"
+          onClick={onExportVideo}
+          disabled={!canPlay || busy}
+          className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-40"
+        >
+          Video exportieren
+        </button>
+        <button
+          type="button"
+          onClick={onExportGif}
+          disabled={!canPlay || busy}
+          className="rounded-lg border border-slate-600 bg-slate-800 px-4 py-2 text-sm text-slate-200 hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-40"
+        >
+          GIF exportieren
+        </button>
+      </div>
+
       <div className="flex flex-wrap gap-2">
         {steps.map((step, index) => {
           const isActive = !busy && index === currentIndex;
@@ -156,33 +183,6 @@ export function Timeline({
             </div>
           );
         })}
-      </div>
-
-      <div className="mt-3 flex flex-wrap items-center gap-2">
-        <button
-          type="button"
-          onClick={onAddStep}
-          disabled={busy}
-          className="rounded-lg border border-slate-600 bg-slate-800 px-4 py-2 text-sm text-slate-200 hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-50"
-        >
-          + Schritt hinzufügen
-        </button>
-        <button
-          type="button"
-          onClick={onExportVideo}
-          disabled={!canPlay || busy}
-          className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-40"
-        >
-          Video exportieren
-        </button>
-        <button
-          type="button"
-          onClick={onExportGif}
-          disabled={!canPlay || busy}
-          className="rounded-lg border border-slate-600 bg-slate-800 px-4 py-2 text-sm text-slate-200 hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-40"
-        >
-          GIF exportieren
-        </button>
       </div>
 
       {isExporting && (
