@@ -21,6 +21,7 @@ import {
   even,
   getElementsAtTime,
   getExportFrameCount,
+  getExportHoldMs,
   getFrameTimeMs,
   slugify,
   yieldUnthrottled,
@@ -149,11 +150,12 @@ async function exportGifJob(
 ): Promise<ExportResult> {
   const ctx = ensureCanvasSize(canvas, width, height);
   const { totalMs } = getPlaybackPlan(job.keyframes);
+  const timelineMs = totalMs + getExportHoldMs(job.keyframes);
   const frameCount = getExportFrameCount(job.keyframes, job.fps);
   const gif = GIFEncoder();
 
   for (let i = 0; i < frameCount; i++) {
-    const elapsedMs = getFrameTimeMs(i, job.fps, totalMs);
+    const elapsedMs = getFrameTimeMs(i, job.fps, timelineMs);
     drawExportFrame(
       ctx,
       width,
@@ -192,6 +194,7 @@ async function exportWithWebCodecs(
   }
 
   const { totalMs } = getPlaybackPlan(job.keyframes);
+  const timelineMs = totalMs + getExportHoldMs(job.keyframes);
   const frameCount = getExportFrameCount(job.keyframes, job.fps);
   const frameDuration = 1 / job.fps;
   const label = "Video wird gerendert";
@@ -210,7 +213,7 @@ async function exportWithWebCodecs(
 
   try {
     for (let i = 0; i < frameCount; i++) {
-      const elapsedMs = getFrameTimeMs(i, job.fps, totalMs);
+      const elapsedMs = getFrameTimeMs(i, job.fps, timelineMs);
       drawExportFrame(
         ctx,
         width,
@@ -259,12 +262,13 @@ async function exportWithWhammy(
   onProgress: (percent: number, label: string) => void,
 ): Promise<ExportResult> {
   const { totalMs } = getPlaybackPlan(job.keyframes);
+  const timelineMs = totalMs + getExportHoldMs(job.keyframes);
   const frameCount = getExportFrameCount(job.keyframes, job.fps);
   const label = "Video wird gerendert";
   const webpFrames: string[] = [];
 
   for (let i = 0; i < frameCount; i++) {
-    const elapsedMs = getFrameTimeMs(i, job.fps, totalMs);
+    const elapsedMs = getFrameTimeMs(i, job.fps, timelineMs);
     drawExportFrame(
       ctx,
       width,

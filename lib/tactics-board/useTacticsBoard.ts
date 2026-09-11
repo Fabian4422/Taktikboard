@@ -10,6 +10,7 @@ import {
   getDefaultScale,
   cloneElements,
   createEmptyKeyframe,
+  createDefaultTextBoxElement,
   deepCloneKeyframe,
   interpolateElementsTimed,
   getPlaybackPlan,
@@ -20,6 +21,8 @@ import {
   DEFAULT_PLAYER_SCALE_PERCENT,
   DEFAULT_CONE_COLOR,
   getElementScale,
+  clampKeyframeDuration,
+  DEFAULT_KEYFRAME_DURATION_S,
   type FieldRotation,
   type FieldView,
   type KeyframeSpeed,
@@ -31,6 +34,7 @@ import {
   viewportUprightElementRotation,
 } from "@/lib/tactics-board/fieldLayout";
 import { createId } from "@/lib/uuid";
+import { getExportHoldMs } from "@/lib/tactics-board/exportShared";
 
 const DEFAULT_DOCUMENT: TacticsBoardDocument = {
   name: "Neues Taktikboard",
@@ -76,6 +80,13 @@ function hasManualOverride(prev: BoardElement, curr: BoardElement): boolean {
   if (Math.abs(getElementScale(curr) - getElementScale(prev)) > CASCADE_SCALE_EPS) return true;
   if ((curr.color ?? "") !== (prev.color ?? "")) return true;
   if (curr.number !== prev.number) return true;
+  if ((curr.text ?? "") !== (prev.text ?? "")) return true;
+  if ((curr.fontSize ?? null) !== (prev.fontSize ?? null)) return true;
+  if ((curr.fontFamily ?? "") !== (prev.fontFamily ?? "")) return true;
+  if ((curr.bgColor ?? "") !== (prev.bgColor ?? "")) return true;
+  if ((curr.bgStyle ?? "") !== (prev.bgStyle ?? "")) return true;
+  if ((curr.borderRadius ?? null) !== (prev.borderRadius ?? null)) return true;
+  if ((curr.width ?? null) !== (prev.width ?? null)) return true;
   if (pointsDiffer(prev.points, curr.points)) return true;
   return false;
 }
@@ -398,6 +409,15 @@ export function useTacticsBoard(initialDocument?: TacticsBoardDocument) {
         return;
       }
 
+      if (toolMode === "text-box") {
+        const newElement = createDefaultTextBoxElement(createId(), x, y);
+        addElementWithCascade(newElement);
+        clearStampMemory();
+        setToolMode("select");
+        setSelectedId(newElement.id);
+        return;
+      }
+
       const memory = stampMemoryRef.current;
       const useMemory = Boolean(memory && memory.type === toolMode);
 
@@ -461,6 +481,7 @@ export function useTacticsBoard(initialDocument?: TacticsBoardDocument) {
         label: `Schritt ${newIndex}`,
         elements: cloneElements(last.elements),
         speed: last.speed ?? "normal",
+        duration: last.duration ?? DEFAULT_KEYFRAME_DURATION_S,
       };
       const keyframes = [...prev.keyframes, newKeyframe];
       setCurrentStepIndex(keyframes.length - 1);
@@ -525,7 +546,25 @@ export function useTacticsBoard(initialDocument?: TacticsBoardDocument) {
   }, [addElementWithCascade, clearStampMemory, currentKeyframe.elements, isPlaying]);
 
   const updateSelectedElement = useCallback(
-    (patch: Partial<Pick<BoardElement, "x" | "y" | "scale" | "number" | "color">>) => {
+    (
+      patch: Partial<
+        Pick<
+          BoardElement,
+          | "x"
+          | "y"
+          | "scale"
+          | "number"
+          | "color"
+          | "text"
+          | "fontSize"
+          | "fontFamily"
+          | "bgColor"
+          | "bgStyle"
+          | "borderRadius"
+          | "width"
+        >
+      >,
+    ) => {
       if (!selectedId || isPlaying) return;
       const current = findElement(currentKeyframe.elements, selectedId);
       if (!current) return;
@@ -573,11 +612,31 @@ export function useTacticsBoard(initialDocument?: TacticsBoardDocument) {
     });
   }, [isPlaying]);
 
+  const setKeyframeDuration = useCallback((index: number, duration: number) => {
+    if (isPlaying) return;
+    const clamped = clampKeyframeDuration(duration);
+    setDocument((prev) => {
+      const keyframes = [...prev.keyframes];
+      if (!keyframes[index]) return prev;
+      keyframes[index] = { ...keyframes[index], duration: clamped };
+      return { ...prev, keyframes };
+    });
+  }, [isPlaying]);
+
   const setAllKeyframeSpeeds = useCallback((speed: KeyframeSpeed) => {
     if (isPlaying) return;
     setDocument((prev) => ({
       ...prev,
       keyframes: prev.keyframes.map((kf) => ({ ...kf, speed })),
+    }));
+  }, [isPlaying]);
+
+  const setAllKeyframeDurations = useCallback((duration: number) => {
+    if (isPlaying) return;
+    const clamped = clampKeyframeDuration(duration);
+    setDocument((prev) => ({
+      ...prev,
+      keyframes: prev.keyframes.map((kf) => ({ ...kf, duration: clamped })),
     }));
   }, [isPlaying]);
 
@@ -678,6 +737,9 @@ export function useTacticsBoard(initialDocument?: TacticsBoardDocument) {
       return;
     }
 
+    const holdMs = getExportHoldMs(document.keyframes);
+    const endMs = totalMs + holdMs;
+
     const tick = (timestamp: number) => {
       if (lastFrameRef.current === null) {
         lastFrameRef.current = timestamp;
@@ -686,6 +748,18 @@ export function useTacticsBoard(initialDocument?: TacticsBoardDocument) {
       lastFrameRef.current = timestamp;
       timelineElapsedRef.current += dt * playbackRateRef.current;
       const elapsed = timelineElapsedRef.current;
+
+      if (elapsed >= endMs) {
+        const last = document.keyframes[document.keyframes.length - 1];
+        setDisplayElements(cloneElements(last.elements));
+        setPlaybackProgress(1);
+        setIsPlaying(false);
+        setIsPaused(false);
+        timelineElapsedRef.current = 0;
+        lastFrameRef.current = null;
+        setCurrentStepIndex(document.keyframes.length - 1);
+        return;
+      }
 
       let remaining = elapsed;
       let fromIndex = 0;
@@ -697,12 +771,8 @@ export function useTacticsBoard(initialDocument?: TacticsBoardDocument) {
       if (fromIndex >= timings.length) {
         const last = document.keyframes[document.keyframes.length - 1];
         setDisplayElements(cloneElements(last.elements));
-        setPlaybackProgress(1);
-        setIsPlaying(false);
-        setIsPaused(false);
-        timelineElapsedRef.current = 0;
-        lastFrameRef.current = null;
-        setCurrentStepIndex(document.keyframes.length - 1);
+        setPlaybackProgress(Math.min(elapsed / endMs, 1));
+        animationRef.current = requestAnimationFrame(tick);
         return;
       }
 
@@ -715,7 +785,7 @@ export function useTacticsBoard(initialDocument?: TacticsBoardDocument) {
           .filter((el) => el.opacity > 0.05)
           .map(({ opacity: _o, ...el }) => el),
       );
-      setPlaybackProgress(Math.min(elapsed / totalMs, 1));
+      setPlaybackProgress(Math.min(elapsed / endMs, 1));
 
       animationRef.current = requestAnimationFrame(tick);
     };
@@ -814,6 +884,8 @@ export function useTacticsBoard(initialDocument?: TacticsBoardDocument) {
     setPlaybackRate,
     setKeyframeSpeed,
     setAllKeyframeSpeeds,
+    setKeyframeDuration,
+    setAllKeyframeDurations,
     updateSelectedElement,
   };
 }

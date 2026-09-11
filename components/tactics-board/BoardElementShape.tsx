@@ -1,10 +1,23 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { Circle, Group, Line, Text, Transformer } from "react-konva";
+import { Circle, Group, Line, Rect, Text, Transformer } from "react-konva";
 import type Konva from "konva";
 import type { BoardElement } from "@/lib/tactics-board/types";
-import { getElementScale, isRotatable } from "@/lib/tactics-board/types";
+import {
+  DEFAULT_TEXT_BOX_PADDING,
+  DEFAULT_TEXT_BOX_TEXT,
+  getElementScale,
+  getTextBoxBackgroundOpacity,
+  getTextBoxBgColor,
+  getTextBoxBgStyle,
+  getTextBoxBorderRadius,
+  getTextBoxColor,
+  getTextBoxFontFamily,
+  getTextBoxFontSize,
+  getTextBoxWidth,
+  isRotatable,
+} from "@/lib/tactics-board/types";
 import {
   ELEMENT_META,
   arrowHeadPoints,
@@ -361,6 +374,73 @@ export function BoardElementShape({
           <SoccerBallIcon selected={selected} />
         </Group>
       );
+
+    case "text-box": {
+      const text = element.text || DEFAULT_TEXT_BOX_TEXT;
+      const fontSize = getTextBoxFontSize(element);
+      const fontFamily = getTextBoxFontFamily(element);
+      const textColor = getTextBoxColor(element);
+      const bgColor = getTextBoxBgColor(element);
+      const bgStyle = getTextBoxBgStyle(element);
+      const bgOpacity = getTextBoxBackgroundOpacity(bgStyle);
+      const borderRadius = getTextBoxBorderRadius(element);
+      const boxWidth = getTextBoxWidth(element);
+      const padding = DEFAULT_TEXT_BOX_PADDING;
+      const lineCount = Math.max(1, text.split("\n").length);
+      const approxLines = Math.max(
+        lineCount,
+        Math.ceil(text.length / Math.max(8, Math.floor((boxWidth - padding * 2) / (fontSize * 0.55)))),
+      );
+      const boxHeight = Math.max(fontSize + padding * 2, approxLines * fontSize * 1.3 + padding * 2);
+
+      return (
+        <Group {...commonGroupProps}>
+          {bgOpacity > 0 && (
+            <Rect
+              x={-padding}
+              y={-padding}
+              width={boxWidth + padding}
+              height={boxHeight}
+              fill={bgColor}
+              opacity={bgOpacity}
+              cornerRadius={borderRadius}
+              stroke={selected ? "#38bdf8" : "rgba(148,163,184,0.35)"}
+              strokeWidth={selected ? 2 : 1}
+            />
+          )}
+          {bgOpacity <= 0 && selected && (
+            <Rect
+              x={-padding}
+              y={-padding}
+              width={boxWidth + padding}
+              height={boxHeight}
+              fill="transparent"
+              stroke="#38bdf8"
+              strokeWidth={2}
+              cornerRadius={borderRadius}
+              dash={[6, 4]}
+            />
+          )}
+          <Text
+            text={text}
+            fontSize={fontSize}
+            fontFamily={fontFamily}
+            fill={textColor}
+            width={boxWidth}
+            align="left"
+            listening={false}
+          />
+          {/* Hit-area for easier selection/drag */}
+          <Rect
+            x={-padding}
+            y={-padding}
+            width={boxWidth + padding}
+            height={boxHeight}
+            fill="rgba(0,0,0,0.01)"
+          />
+        </Group>
+      );
+    }
 
     default:
       return null;

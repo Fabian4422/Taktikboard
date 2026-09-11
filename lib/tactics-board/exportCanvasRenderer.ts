@@ -1,10 +1,20 @@
 import type { BoardElement, FieldRotation, FieldView } from "./types";
 import {
+  DEFAULT_TEXT_BOX_PADDING,
+  DEFAULT_TEXT_BOX_TEXT,
   DISPLAY_ASPECT_RATIO,
   FIELD_HEIGHT,
   FIELD_WIDTH,
   LETTERBOX_COLOR,
   getElementScale,
+  getTextBoxBackgroundOpacity,
+  getTextBoxBgColor,
+  getTextBoxBgStyle,
+  getTextBoxBorderRadius,
+  getTextBoxColor,
+  getTextBoxFontFamily,
+  getTextBoxFontSize,
+  getTextBoxWidth,
 } from "./types";
 import {
   getEffectiveRotation,
@@ -440,11 +450,95 @@ function drawMarkerElement(
     case "ball":
       drawBall(ctx);
       break;
+    case "text-box": {
+      const text = element.text || DEFAULT_TEXT_BOX_TEXT;
+      const fontSize = getTextBoxFontSize(element);
+      const fontFamily = getTextBoxFontFamily(element);
+      const textColor = getTextBoxColor(element);
+      const bgColor = getTextBoxBgColor(element);
+      const bgStyle = getTextBoxBgStyle(element);
+      const bgOpacity = getTextBoxBackgroundOpacity(bgStyle);
+      const borderRadius = getTextBoxBorderRadius(element);
+      const boxWidth = getTextBoxWidth(element);
+      const padding = DEFAULT_TEXT_BOX_PADDING;
+      const lineCount = Math.max(1, text.split("\n").length);
+      const approxLines = Math.max(
+        lineCount,
+        Math.ceil(text.length / Math.max(8, Math.floor((boxWidth - padding * 2) / (fontSize * 0.55)))),
+      );
+      const boxHeight = Math.max(fontSize + padding * 2, approxLines * fontSize * 1.3 + padding * 2);
+
+      if (bgOpacity > 0) {
+        ctx.save();
+        ctx.globalAlpha = bgOpacity;
+        ctx.fillStyle = bgColor;
+        roundRect(ctx, -padding, -padding, boxWidth + padding, boxHeight, borderRadius);
+        ctx.fill();
+        ctx.restore();
+        ctx.strokeStyle = "rgba(148,163,184,0.35)";
+        ctx.lineWidth = 1;
+        roundRect(ctx, -padding, -padding, boxWidth + padding, boxHeight, borderRadius);
+        ctx.stroke();
+      }
+
+      ctx.fillStyle = textColor;
+      ctx.font = `${fontSize}px ${fontFamily}, sans-serif`;
+      ctx.textAlign = "left";
+      ctx.textBaseline = "top";
+      wrapFillText(ctx, text, 0, 0, boxWidth, fontSize * 1.3);
+      break;
+    }
     default:
       break;
   }
 
   ctx.restore();
+}
+
+function roundRect(
+  ctx: ExportDrawContext,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+  r: number,
+) {
+  const radius = Math.max(0, Math.min(r, w / 2, h / 2));
+  ctx.beginPath();
+  ctx.moveTo(x + radius, y);
+  ctx.arcTo(x + w, y, x + w, y + h, radius);
+  ctx.arcTo(x + w, y + h, x, y + h, radius);
+  ctx.arcTo(x, y + h, x, y, radius);
+  ctx.arcTo(x, y, x + w, y, radius);
+  ctx.closePath();
+}
+
+function wrapFillText(
+  ctx: ExportDrawContext,
+  text: string,
+  x: number,
+  y: number,
+  maxWidth: number,
+  lineHeight: number,
+) {
+  const paragraphs = text.split("\n");
+  let cursorY = y;
+  for (const paragraph of paragraphs) {
+    const words = paragraph.length > 0 ? paragraph.split(/\s+/) : [""];
+    let line = "";
+    for (const word of words) {
+      const test = line ? `${line} ${word}` : word;
+      if (ctx.measureText(test).width > maxWidth && line) {
+        ctx.fillText(line, x, cursorY);
+        cursorY += lineHeight;
+        line = word;
+      } else {
+        line = test;
+      }
+    }
+    ctx.fillText(line, x, cursorY);
+    cursorY += lineHeight;
+  }
 }
 
 export function drawExportFrame(

@@ -1,11 +1,14 @@
 import {
   cloneElements,
   getPlaybackPlan,
+  getKeyframeDuration,
   interpolateElementsTimed,
   EXPORT_GIF_HEIGHT,
   EXPORT_GIF_WIDTH,
   EXPORT_VIDEO_HEIGHT,
   EXPORT_VIDEO_WIDTH,
+  MAX_SEGMENT_MS,
+  MIN_SEGMENT_MS,
   type BoardElement,
   type FieldRotation,
   type FieldView,
@@ -15,6 +18,7 @@ import {
 export const VIDEO_EXPORT_FPS = 30;
 export const GIF_EXPORT_FPS = 30;
 export const EXPORT_FPS = VIDEO_EXPORT_FPS;
+/** Fallback, falls keine Keyframes vorhanden */
 export const HOLD_LAST_FRAME_MS = 400;
 export const WEBP_QUALITY = 0.92;
 
@@ -31,6 +35,13 @@ export interface ExportResult {
 
 export function even(n: number): number {
   return Math.max(2, n - (n % 2));
+}
+
+/** Hold-Dauer des letzten Schritts für Export (Anzeigedauer). */
+export function getExportHoldMs(keyframes: Keyframe[]): number {
+  const last = keyframes[keyframes.length - 1];
+  if (!last) return HOLD_LAST_FRAME_MS;
+  return Math.min(MAX_SEGMENT_MS, Math.max(MIN_SEGMENT_MS, getKeyframeDuration(last) * 1000));
 }
 
 export function getElementsAtTime(keyframes: Keyframe[], elapsedMs: number): BoardElement[] {
@@ -72,7 +83,7 @@ export function getFrameTimeMs(frameIndex: number, fps: number, totalMs: number)
 
 export function getExportFrameCount(keyframes: Keyframe[], fps = EXPORT_FPS): number {
   const { totalMs } = getPlaybackPlan(keyframes);
-  const durationMs = totalMs + HOLD_LAST_FRAME_MS;
+  const durationMs = totalMs + getExportHoldMs(keyframes);
   return Math.max(1, Math.round((durationMs / 1000) * fps));
 }
 

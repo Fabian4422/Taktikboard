@@ -31,9 +31,46 @@ export type EquipmentType =
   | "mini-goal"
   | "big-goal"
   | "ball";
-export type DrawingType = "pass-line" | "run-path" | "dribble-path" | "guide-line";
+export type DrawingType = "pass-line" | "run-path" | "dribble-path" | "guide-line" | "text-box";
 
 export type ElementType = PlayerType | EquipmentType | DrawingType;
+
+export type TextBoxFontFamily = "Inter" | "Arial" | "monospace" | "Impact";
+export type TextBoxBackgroundStyle = "solid" | "glass" | "none";
+
+export const TEXT_BOX_FONT_OPTIONS: ReadonlyArray<{ label: string; value: TextBoxFontFamily }> = [
+  { label: "Inter", value: "Inter" },
+  { label: "Arial", value: "Arial" },
+  { label: "Monospace", value: "monospace" },
+  { label: "Impact", value: "Impact" },
+];
+
+export const TEXT_BOX_BG_STYLE_OPTIONS: ReadonlyArray<{
+  label: string;
+  value: TextBoxBackgroundStyle;
+}> = [
+  { label: "Vollton", value: "solid" },
+  { label: "Halbtransparent", value: "glass" },
+  { label: "Kein Hintergrund", value: "none" },
+];
+
+export const TEXT_COLOR_OPTIONS: ReadonlyArray<{ label: string; value: string }> = [
+  { label: "Weiß", value: "#f8fafc" },
+  { label: "Schwarz", value: "#0f172a" },
+  { label: "Gelb", value: "#facc15" },
+  { label: "Rot", value: "#ef4444" },
+  { label: "Sky", value: "#38bdf8" },
+];
+
+export const DEFAULT_TEXT_BOX_TEXT = "Text hier eingeben...";
+export const DEFAULT_TEXT_BOX_FONT_SIZE = 18;
+export const DEFAULT_TEXT_BOX_FONT_FAMILY: TextBoxFontFamily = "Inter";
+export const DEFAULT_TEXT_BOX_COLOR = "#f8fafc";
+export const DEFAULT_TEXT_BOX_BG_COLOR = "#0f172a";
+export const DEFAULT_TEXT_BOX_BG_STYLE: TextBoxBackgroundStyle = "glass";
+export const DEFAULT_TEXT_BOX_BORDER_RADIUS = 8;
+export const DEFAULT_TEXT_BOX_WIDTH = 180;
+export const DEFAULT_TEXT_BOX_PADDING = 8;
 
 export interface BoardElement {
   id: string;
@@ -45,9 +82,23 @@ export interface BoardElement {
   number?: number;
   /** Skalierung (1 = 100 %); Ball standardmäßig kleiner */
   scale?: number;
-  /** Farbe (z. B. Hütchen) als Hex-Wert */
+  /** Farbe (z. B. Hütchen / Textfarbe) als Hex-Wert */
   color?: string;
   points?: number[];
+  /** Textinhalt (Textfeld) */
+  text?: string;
+  /** Schriftgröße in px (Textfeld) */
+  fontSize?: number;
+  /** Schriftart (Textfeld) */
+  fontFamily?: TextBoxFontFamily | string;
+  /** Hintergrundfarbe (Textfeld) */
+  bgColor?: string;
+  /** Hintergrund-Stil (Textfeld) */
+  bgStyle?: TextBoxBackgroundStyle;
+  /** Abrundung in px (Textfeld) */
+  borderRadius?: number;
+  /** Breite des Textfelds in Feldkoordinaten */
+  width?: number;
 }
 
 export type KeyframeSpeed = "slow" | "normal" | "fast";
@@ -75,12 +126,19 @@ export const PLAYBACK_RATE_LABELS: Record<PlaybackRate, string> = {
   2: "2x",
 };
 
+/** Standard-Anzeigedauer eines Schritts in Sekunden */
+export const DEFAULT_KEYFRAME_DURATION_S = 1.5;
+export const MIN_KEYFRAME_DURATION_S = 0.2;
+export const MAX_KEYFRAME_DURATION_S = 30;
+
 export interface Keyframe {
   id: string;
   label: string;
   elements: BoardElement[];
-  /** Tempo der Animation von diesem Schritt zum nächsten */
+  /** Tempo der Animation von diesem Schritt zum nächsten (Legacy / Feintuning) */
   speed?: KeyframeSpeed;
+  /** Anzeigedauer dieses Schritts in Sekunden (Übergang zum nächsten) */
+  duration?: number;
 }
 
 export interface TacticsBoardDocument {
@@ -162,6 +220,66 @@ export function elementSupportsScale(type: ElementType): boolean {
   return !LINE_TYPES.has(type);
 }
 
+export function isTextBoxType(type: ElementType): boolean {
+  return type === "text-box";
+}
+
+export function getTextBoxFontSize(element: BoardElement): number {
+  return element.fontSize ?? DEFAULT_TEXT_BOX_FONT_SIZE;
+}
+
+export function getTextBoxFontFamily(element: BoardElement): string {
+  return element.fontFamily ?? DEFAULT_TEXT_BOX_FONT_FAMILY;
+}
+
+export function getTextBoxColor(element: BoardElement): string {
+  return element.color ?? DEFAULT_TEXT_BOX_COLOR;
+}
+
+export function getTextBoxBgColor(element: BoardElement): string {
+  return element.bgColor ?? DEFAULT_TEXT_BOX_BG_COLOR;
+}
+
+export function getTextBoxBgStyle(element: BoardElement): TextBoxBackgroundStyle {
+  return element.bgStyle ?? DEFAULT_TEXT_BOX_BG_STYLE;
+}
+
+export function getTextBoxBorderRadius(element: BoardElement): number {
+  return element.borderRadius ?? DEFAULT_TEXT_BOX_BORDER_RADIUS;
+}
+
+export function getTextBoxWidth(element: BoardElement): number {
+  return element.width ?? DEFAULT_TEXT_BOX_WIDTH;
+}
+
+export function getTextBoxBackgroundOpacity(style: TextBoxBackgroundStyle): number {
+  if (style === "none") return 0;
+  if (style === "glass") return 0.55;
+  return 1;
+}
+
+export function createDefaultTextBoxElement(
+  id: string,
+  x: number,
+  y: number,
+): BoardElement {
+  return {
+    id,
+    type: "text-box",
+    x,
+    y,
+    text: DEFAULT_TEXT_BOX_TEXT,
+    fontSize: DEFAULT_TEXT_BOX_FONT_SIZE,
+    fontFamily: DEFAULT_TEXT_BOX_FONT_FAMILY,
+    color: DEFAULT_TEXT_BOX_COLOR,
+    bgColor: DEFAULT_TEXT_BOX_BG_COLOR,
+    bgStyle: DEFAULT_TEXT_BOX_BG_STYLE,
+    borderRadius: DEFAULT_TEXT_BOX_BORDER_RADIUS,
+    width: DEFAULT_TEXT_BOX_WIDTH,
+    scale: 1,
+  };
+}
+
 export interface InterpolatedElement extends BoardElement {
   opacity: number;
 }
@@ -194,6 +312,9 @@ export function scaleBoardElement(
     x: element.x * sx,
     y: element.y * sy,
     scale: LINE_TYPES.has(element.type) ? element.scale : prevScale * sizeFactor,
+    width: element.width != null ? element.width * sizeFactor : undefined,
+    fontSize: element.fontSize != null ? element.fontSize * sizeFactor : undefined,
+    borderRadius: element.borderRadius != null ? element.borderRadius * sizeFactor : undefined,
     points: element.points
       ? element.points.map((v, i) => (i % 2 === 0 ? v * sx : v * sy))
       : undefined,
@@ -277,11 +398,22 @@ export function createEmptyKeyframe(index: number): Keyframe {
     label: `Schritt ${index}`,
     elements: [],
     speed: "normal",
+    duration: DEFAULT_KEYFRAME_DURATION_S,
   };
 }
 
 export function getKeyframeSpeed(keyframe: Keyframe): KeyframeSpeed {
   return keyframe.speed ?? "normal";
+}
+
+export function getKeyframeDuration(keyframe: Keyframe): number {
+  const raw = keyframe.duration ?? DEFAULT_KEYFRAME_DURATION_S;
+  return Math.min(MAX_KEYFRAME_DURATION_S, Math.max(MIN_KEYFRAME_DURATION_S, raw));
+}
+
+export function clampKeyframeDuration(seconds: number): number {
+  if (!Number.isFinite(seconds)) return DEFAULT_KEYFRAME_DURATION_S;
+  return Math.min(MAX_KEYFRAME_DURATION_S, Math.max(MIN_KEYFRAME_DURATION_S, seconds));
 }
 
 /** Feld: 1050 Einheiten ≈ 105 m → 10 Einheiten = 1 m */
@@ -343,13 +475,12 @@ export interface SegmentTiming {
   durationMs: number;
 }
 
-/** Einheitliche Schritt-Dauer: Auto aus max. Distanz, dann Langsam/Normal/Schnell */
-export function getSegmentTiming(from: Keyframe, to: Keyframe): SegmentTiming {
-  const speedFactor = KEYFRAME_SPEED_MULTIPLIER[getKeyframeSpeed(from)];
-  const travelMs = (maxTravelDistance(from.elements, to.elements) / REFERENCE_SPEED_UNITS_PER_S) * 1000;
-  const rotateMs = (maxRotationDelta(from.elements, to.elements) / 90) * ROTATE_MS_PER_90;
-  const autoMs = Math.max(travelMs, rotateMs, MIN_SEGMENT_MS);
-  const durationMs = Math.min(MAX_SEGMENT_MS, Math.max(MIN_SEGMENT_MS, autoMs * speedFactor));
+/** Manuelle Schritt-Dauer in Sekunden (Standard 1.5s) — gilt für Playback und Export. */
+export function getSegmentTiming(from: Keyframe, _to: Keyframe): SegmentTiming {
+  const durationMs = Math.min(
+    MAX_SEGMENT_MS,
+    Math.max(MIN_SEGMENT_MS, getKeyframeDuration(from) * 1000),
+  );
   return { durationMs };
 }
 

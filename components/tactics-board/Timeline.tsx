@@ -1,11 +1,18 @@
 "use client";
 
-import type { KeyframeSpeed, PlaybackRate } from "@/lib/tactics-board/types";
-import { KEYFRAME_SPEED_LABELS, PLAYBACK_RATE_LABELS, PLAYBACK_RATES } from "@/lib/tactics-board/types";
+import type { PlaybackRate } from "@/lib/tactics-board/types";
+import {
+  DEFAULT_KEYFRAME_DURATION_S,
+  getKeyframeDuration,
+  MAX_KEYFRAME_DURATION_S,
+  MIN_KEYFRAME_DURATION_S,
+  PLAYBACK_RATE_LABELS,
+  PLAYBACK_RATES,
+} from "@/lib/tactics-board/types";
 import { PlaybackBar } from "./PlaybackBar";
 
 interface TimelineProps {
-  steps: { id: string; label: string; speed?: KeyframeSpeed }[];
+  steps: { id: string; label: string; duration?: number }[];
   currentIndex: number;
   isPlaying: boolean;
   isPaused?: boolean;
@@ -20,8 +27,7 @@ interface TimelineProps {
   onPlay: () => void;
   onPause: () => void;
   onStop: () => void;
-  onSpeedChange?: (index: number, speed: KeyframeSpeed) => void;
-  onSetAllSpeeds?: (speed: KeyframeSpeed) => void;
+  onDurationChange?: (index: number, duration: number) => void;
   onPlaybackRateChange: (rate: PlaybackRate) => void;
   onExportVideo?: () => void;
   onExportGif?: () => void;
@@ -43,15 +49,22 @@ export function Timeline({
   onPlay,
   onPause,
   onStop,
-  onSpeedChange,
-  onSetAllSpeeds,
+  onDurationChange,
   onPlaybackRateChange,
   onExportVideo,
   onExportGif,
 }: TimelineProps) {
   const canPlay = steps.length >= 2;
   const busy = isPlaying || isExporting;
-  const speeds = Object.keys(KEYFRAME_SPEED_LABELS) as KeyframeSpeed[];
+  const currentStep = steps[currentIndex];
+  const currentDuration = currentStep
+    ? getKeyframeDuration({
+        id: currentStep.id,
+        label: currentStep.label,
+        elements: [],
+        duration: currentStep.duration,
+      })
+    : DEFAULT_KEYFRAME_DURATION_S;
 
   return (
     <div className="rounded-xl border border-slate-700 bg-slate-900/80 p-4">
@@ -92,22 +105,39 @@ export function Timeline({
         </div>
       </div>
 
-      {onSetAllSpeeds && (
-        <div className="mb-3 flex flex-wrap items-center gap-2">
-          <span className="text-xs text-slate-400">Alle Schritte setzen auf:</span>
-          <div className="flex rounded-lg border border-slate-600 bg-slate-950 p-0.5">
-            {speeds.map((speed) => (
-              <button
-                key={speed}
-                type="button"
-                onClick={() => onSetAllSpeeds(speed)}
-                disabled={busy || steps.length === 0}
-                className="rounded-md px-2.5 py-1 text-xs font-medium text-slate-300 transition hover:bg-slate-800 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                {KEYFRAME_SPEED_LABELS[speed]}
-              </button>
-            ))}
-          </div>
+      {onDurationChange && currentStep && (
+        <div className="mb-3 flex flex-wrap items-center gap-3 rounded-lg border border-slate-700 bg-slate-950/60 px-3 py-2">
+          <span className="text-xs font-medium text-slate-400">
+            Schritt-Dauer ({currentStep.label})
+          </span>
+          <label className="flex items-center gap-2 text-sm text-slate-200">
+            <input
+              type="number"
+              min={MIN_KEYFRAME_DURATION_S}
+              max={MAX_KEYFRAME_DURATION_S}
+              step={0.1}
+              value={Number(currentDuration.toFixed(1))}
+              disabled={busy}
+              onChange={(e) => {
+                const raw = Number.parseFloat(e.target.value);
+                if (!Number.isFinite(raw)) return;
+                onDurationChange(currentIndex, raw);
+              }}
+              className="w-20 rounded-md border border-slate-600 bg-slate-900 px-2 py-1 text-sm text-white disabled:opacity-50"
+            />
+            <span className="text-xs text-slate-500">Sekunden</span>
+          </label>
+          <input
+            type="range"
+            min={MIN_KEYFRAME_DURATION_S}
+            max={MAX_KEYFRAME_DURATION_S}
+            step={0.1}
+            value={currentDuration}
+            disabled={busy}
+            onChange={(e) => onDurationChange(currentIndex, Number.parseFloat(e.target.value))}
+            className="min-w-[140px] flex-1 accent-emerald-400 disabled:opacity-50"
+            title="Anzeigedauer dieses Schritts"
+          />
         </div>
       )}
 
@@ -141,6 +171,12 @@ export function Timeline({
       <div className="flex flex-wrap gap-2">
         {steps.map((step, index) => {
           const isActive = !busy && index === currentIndex;
+          const stepDuration = getKeyframeDuration({
+            id: step.id,
+            label: step.label,
+            elements: [],
+            duration: step.duration,
+          });
           return (
             <div key={step.id} className="group relative min-w-[108px]">
               <button
@@ -165,21 +201,9 @@ export function Timeline({
                   ×
                 </button>
               )}
-              {onSpeedChange && (
-                <select
-                  value={step.speed ?? "normal"}
-                  onChange={(e) => onSpeedChange(index, e.target.value as KeyframeSpeed)}
-                  disabled={busy}
-                  title="Schritt-Tempo (Übergang zum nächsten Keyframe)"
-                  className="mt-1 w-full rounded border border-slate-700 bg-slate-950 px-1 py-0.5 text-[11px] text-slate-400 disabled:opacity-60"
-                >
-                  {speeds.map((speed) => (
-                    <option key={speed} value={speed}>
-                      {KEYFRAME_SPEED_LABELS[speed]}
-                    </option>
-                  ))}
-                </select>
-              )}
+              <p className="mt-1 text-center text-[11px] text-slate-500">
+                {stepDuration.toFixed(1)}s
+              </p>
             </div>
           );
         })}
@@ -208,7 +232,7 @@ export function Timeline({
       )}
 
       <p className="mt-3 text-xs text-slate-500">
-        Video- und GIF-Export laufen mit 30 Bildern/Sekunde.
+        Jeder Schritt hat eine eigene Anzeigedauer. Video-/GIF-Export: 30 fps.
       </p>
     </div>
   );

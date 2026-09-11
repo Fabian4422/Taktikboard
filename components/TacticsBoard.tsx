@@ -563,7 +563,7 @@ export function TacticsBoard({ exerciseId, initialName }: TacticsBoardProps) {
                 steps={board.document.keyframes.map((kf) => ({
                   id: kf.id,
                   label: kf.label,
-                  speed: kf.speed,
+                  duration: kf.duration,
                 }))}
                 currentIndex={board.currentStepIndex}
                 isPlaying={board.isPlaying}
@@ -579,8 +579,7 @@ export function TacticsBoard({ exerciseId, initialName }: TacticsBoardProps) {
                 onPlay={board.startPlayback}
                 onPause={board.pausePlayback}
                 onStop={board.stopPlayback}
-                onSpeedChange={board.setKeyframeSpeed}
-                onSetAllSpeeds={board.setAllKeyframeSpeeds}
+                onDurationChange={board.setKeyframeDuration}
                 onPlaybackRateChange={board.setPlaybackRate}
                 onExportVideo={() => void handleExport("video")}
                 onExportGif={() => void handleExport("gif")}

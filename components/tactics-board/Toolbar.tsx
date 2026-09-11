@@ -132,7 +132,7 @@ function ToolButton({
 const GROUPS: { key: "spieler" | "material" | "zeichnen"; title: string }[] = [
   { key: "spieler", title: "Spieler" },
   { key: "material", title: "Material" },
-  { key: "zeichnen", title: "Zeichnen" },
+  { key: "zeichnen", title: "Zeichnen / Text" },
 ];
 
 export function Toolbar({
@@ -218,7 +218,7 @@ export function Toolbar({
           )}
           {key === "zeichnen" && (
             <p className="mt-2 text-xs text-slate-500">
-              Zwei Klicks auf dem Feld: Start- und Endpunkt setzen.
+              Linien: zwei Klicks (Start/Ende). Textfeld: ein Klick zum Platzieren.
             </p>
           )}
           {key === "material" && (

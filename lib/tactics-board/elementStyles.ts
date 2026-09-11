@@ -20,6 +20,7 @@ export const ELEMENT_META: Record<
   "run-path": { label: "Laufweg", color: "#22d3ee", group: "zeichnen" },
   "dribble-path": { label: "Dribbling", color: "#a855f7", group: "zeichnen" },
   "guide-line": { label: "Hilfslinie", color: "#94a3b8", group: "zeichnen" },
+  "text-box": { label: "Textfeld", color: "#f8fafc", group: "zeichnen" },
 };
 
 export function getPlayerRadius(type: ElementType): number {

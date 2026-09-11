@@ -1,21 +1,52 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import type { BoardElement } from "@/lib/tactics-board/types";
+import type { BoardElement, TextBoxBackgroundStyle, TextBoxFontFamily } from "@/lib/tactics-board/types";
 import {
   CONE_COLOR_OPTIONS,
   DEFAULT_CONE_COLOR,
+  DEFAULT_TEXT_BOX_BORDER_RADIUS,
+  DEFAULT_TEXT_BOX_FONT_SIZE,
+  DEFAULT_TEXT_BOX_TEXT,
   elementHasNumber,
   elementSupportsScale,
   getDefaultScale,
   getElementScale,
+  getTextBoxBgColor,
+  getTextBoxBgStyle,
+  getTextBoxBorderRadius,
+  getTextBoxColor,
+  getTextBoxFontFamily,
+  getTextBoxFontSize,
   isRotatable,
+  isTextBoxType,
+  TEXT_BOX_BG_STYLE_OPTIONS,
+  TEXT_BOX_FONT_OPTIONS,
+  TEXT_COLOR_OPTIONS,
 } from "@/lib/tactics-board/types";
 import { ELEMENT_META } from "@/lib/tactics-board/elementStyles";
 
+type ElementPatch = Partial<
+  Pick<
+    BoardElement,
+    | "x"
+    | "y"
+    | "scale"
+    | "number"
+    | "color"
+    | "text"
+    | "fontSize"
+    | "fontFamily"
+    | "bgColor"
+    | "bgStyle"
+    | "borderRadius"
+    | "width"
+  >
+>;
+
 interface ObjectInspectorProps {
   element: BoardElement;
-  onUpdate: (patch: Partial<Pick<BoardElement, "x" | "y" | "scale" | "number" | "color">>) => void;
+  onUpdate: (patch: ElementPatch) => void;
   onClose: () => void;
   onRotate?: (delta: number) => void;
   onDelete?: () => void;
@@ -33,18 +64,24 @@ export function ObjectInspector({
   const baseScale = getDefaultScale(element.type) || 1;
   const scalePercent = Math.round((scale / baseScale) * 100);
   const showNumber = elementHasNumber(element.type);
-  const showScale = elementSupportsScale(element.type);
+  const showScale = elementSupportsScale(element.type) && !isTextBoxType(element.type);
   const showRotate = isRotatable(element.type);
   const showConeColor = element.type === "cone" || element.type === "dummy";
+  const showTextBox = isTextBoxType(element.type);
   const activeConeColor = element.color ?? DEFAULT_CONE_COLOR;
 
   const [xDraft, setXDraft] = useState(String(Math.round(element.x)));
   const [yDraft, setYDraft] = useState(String(Math.round(element.y)));
+  const [textDraft, setTextDraft] = useState(element.text ?? DEFAULT_TEXT_BOX_TEXT);
 
   useEffect(() => {
     setXDraft(String(Math.round(element.x)));
     setYDraft(String(Math.round(element.y)));
   }, [element.id, element.x, element.y]);
+
+  useEffect(() => {
+    setTextDraft(element.text ?? DEFAULT_TEXT_BOX_TEXT);
+  }, [element.id, element.text]);
 
   const parseNumber = (value: string, fallback: number) => {
     const parsed = Number.parseFloat(value);
@@ -64,9 +101,16 @@ export function ObjectInspector({
     else setYDraft(String(Math.round(next)));
   };
 
+  const fontSize = getTextBoxFontSize(element);
+  const fontFamily = getTextBoxFontFamily(element);
+  const textColor = getTextBoxColor(element);
+  const bgColor = getTextBoxBgColor(element);
+  const bgStyle = getTextBoxBgStyle(element);
+  const borderRadius = getTextBoxBorderRadius(element);
+
   return (
     <aside
-      className="pointer-events-auto fixed right-4 top-24 z-40 w-72 rounded-2xl border border-slate-600/80 bg-slate-900/95 p-4 shadow-2xl backdrop-blur-md"
+      className="pointer-events-auto fixed right-4 top-24 z-40 max-h-[calc(100vh-7rem)] w-72 overflow-y-auto rounded-2xl border border-slate-600/80 bg-slate-900/95 p-4 shadow-2xl backdrop-blur-md"
       role="dialog"
       aria-label="Objekteigenschaften"
     >
@@ -119,6 +163,148 @@ export function ObjectInspector({
           />
         </label>
       </div>
+
+      {showTextBox && (
+        <div className="mt-3 flex flex-col gap-3">
+          <label className="flex flex-col gap-1">
+            <span className="text-xs text-slate-400">Textinhalt</span>
+            <textarea
+              rows={3}
+              value={textDraft}
+              onChange={(e) => setTextDraft(e.target.value)}
+              onBlur={() => onUpdate({ text: textDraft })}
+              className="resize-y rounded-lg border border-slate-600 bg-slate-950 px-2 py-1.5 text-sm text-white"
+            />
+          </label>
+
+          <label className="flex flex-col gap-1">
+            <span className="flex justify-between text-xs text-slate-400">
+              <span>Schriftgröße</span>
+              <span>{fontSize} px</span>
+            </span>
+            <input
+              type="range"
+              min={10}
+              max={48}
+              step={1}
+              value={fontSize}
+              onChange={(e) =>
+                onUpdate({
+                  fontSize: Math.max(10, Math.min(48, parseNumber(e.target.value, DEFAULT_TEXT_BOX_FONT_SIZE))),
+                })
+              }
+              className="w-full accent-sky-400"
+            />
+            <input
+              type="number"
+              min={10}
+              max={48}
+              value={fontSize}
+              onChange={(e) =>
+                onUpdate({
+                  fontSize: Math.max(10, Math.min(48, parseNumber(e.target.value, fontSize))),
+                })
+              }
+              className="rounded-lg border border-slate-600 bg-slate-950 px-2 py-1.5 text-sm text-white"
+            />
+          </label>
+
+          <label className="flex flex-col gap-1">
+            <span className="text-xs text-slate-400">Schriftart</span>
+            <select
+              value={fontFamily}
+              onChange={(e) => onUpdate({ fontFamily: e.target.value as TextBoxFontFamily })}
+              className="rounded-lg border border-slate-600 bg-slate-950 px-2 py-1.5 text-sm text-white"
+            >
+              {TEXT_BOX_FONT_OPTIONS.map((opt) => (
+                <option key={opt.value} value={opt.value}>
+                  {opt.label}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <div>
+            <p className="mb-2 text-xs text-slate-400">Textfarbe</p>
+            <div className="flex flex-wrap gap-2">
+              {TEXT_COLOR_OPTIONS.map((opt) => (
+                <button
+                  key={opt.value}
+                  type="button"
+                  title={opt.label}
+                  aria-label={opt.label}
+                  onClick={() => onUpdate({ color: opt.value })}
+                  className={`h-7 w-7 rounded-full border-2 transition ${
+                    textColor === opt.value
+                      ? "border-emerald-400 ring-2 ring-emerald-400/40"
+                      : "border-slate-600 hover:border-slate-400"
+                  }`}
+                  style={{ backgroundColor: opt.value }}
+                />
+              ))}
+            </div>
+            <input
+              type="color"
+              value={textColor}
+              onChange={(e) => onUpdate({ color: e.target.value })}
+              className="mt-2 h-8 w-full cursor-pointer rounded border border-slate-600 bg-slate-950"
+              title="Eigene Textfarbe"
+            />
+          </div>
+
+          <div>
+            <p className="mb-2 text-xs text-slate-400">Hintergrund</p>
+            <div className="mb-2 flex flex-wrap gap-1">
+              {TEXT_BOX_BG_STYLE_OPTIONS.map((opt) => (
+                <button
+                  key={opt.value}
+                  type="button"
+                  onClick={() => onUpdate({ bgStyle: opt.value as TextBoxBackgroundStyle })}
+                  className={`rounded-md border px-2 py-1 text-[11px] transition ${
+                    bgStyle === opt.value
+                      ? "border-emerald-400 bg-emerald-500/20 text-emerald-300"
+                      : "border-slate-600 bg-slate-800 text-slate-300 hover:border-slate-500"
+                  }`}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+            {bgStyle !== "none" && (
+              <input
+                type="color"
+                value={bgColor}
+                onChange={(e) => onUpdate({ bgColor: e.target.value })}
+                className="h-8 w-full cursor-pointer rounded border border-slate-600 bg-slate-950"
+                title="Hintergrundfarbe"
+              />
+            )}
+          </div>
+
+          <label className="flex flex-col gap-1">
+            <span className="flex justify-between text-xs text-slate-400">
+              <span>Abrundung</span>
+              <span>{borderRadius} px</span>
+            </span>
+            <input
+              type="range"
+              min={0}
+              max={32}
+              step={1}
+              value={borderRadius}
+              onChange={(e) =>
+                onUpdate({
+                  borderRadius: Math.max(
+                    0,
+                    Math.min(32, parseNumber(e.target.value, DEFAULT_TEXT_BOX_BORDER_RADIUS)),
+                  ),
+                })
+              }
+              className="w-full accent-sky-400"
+            />
+          </label>
+        </div>
+      )}
 
       {showScale && (
         <label className="mt-3 flex flex-col gap-1">
