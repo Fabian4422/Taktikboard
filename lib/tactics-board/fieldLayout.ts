@@ -108,6 +108,21 @@ export function getFieldViewport(view: FieldView): FieldViewport {
     };
   }
 
+  /**
+   * Angriffsdrittel: volle Spielfeldbreite (Seitenauslinien),
+   * Tiefe vom Tor bis knapp hinter die Drittellinie (~33 % der Länge).
+   */
+  if (view === "final-third") {
+    const thirdDepth = layout.fw / 3;
+    const marginPastThird = 16;
+    return {
+      x: 0,
+      y: 0,
+      w: layout.left + thirdDepth + marginPastThird,
+      h: FIELD_HEIGHT,
+    };
+  }
+
   if (view === "penalty") {
     const arcReach = layout.penaltySpotDist + layout.penaltyArcR;
     const marginX = 24;
@@ -239,6 +254,7 @@ export const FIELD_VIEW_LABELS: Record<FieldView, string> = {
   full: "Ganzes Feld",
   half: "Halbes Feld",
   "half-blank": "Halbfeld blank",
+  "final-third": "Letztes Drittel",
   penalty: "Strafraum",
   free: "Freie Fläche",
 };

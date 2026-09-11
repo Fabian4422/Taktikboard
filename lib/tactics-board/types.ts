@@ -19,7 +19,7 @@ export const EXPORT_GIF_WIDTH = 1280;
 export const EXPORT_GIF_HEIGHT = 720;
 export const LETTERBOX_COLOR = "#0f172a";
 
-export type FieldView = "full" | "half" | "half-blank" | "penalty" | "free";
+export type FieldView = "full" | "half" | "half-blank" | "final-third" | "penalty" | "free";
 export type FieldRotation = 0 | 90 | 180 | 270;
 
 export type PlayerType = "player-a" | "player-b" | "player-c" | "player-d" | "player-gk";
