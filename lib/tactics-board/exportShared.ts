@@ -1,7 +1,7 @@
 import {
   cloneElements,
   getPlaybackPlan,
-  getKeyframeDuration,
+  getSceneTextHoldDurationS,
   interpolateElementsTimed,
   EXPORT_GIF_HEIGHT,
   EXPORT_GIF_WIDTH,
@@ -18,7 +18,7 @@ import {
 export const VIDEO_EXPORT_FPS = 30;
 export const GIF_EXPORT_FPS = 30;
 export const EXPORT_FPS = VIDEO_EXPORT_FPS;
-/** Fallback, falls keine Keyframes vorhanden */
+/** Fallback-Hold ohne Textfeld-Standbild */
 export const HOLD_LAST_FRAME_MS = 400;
 export const WEBP_QUALITY = 0.92;
 
@@ -37,11 +37,15 @@ export function even(n: number): number {
   return Math.max(2, n - (n % 2));
 }
 
-/** Hold-Dauer des letzten Schritts für Export (Anzeigedauer). */
+/** Hold des letzten Schritts: Textfeld-Anzeigedauer, sonst kurzer Fallback. */
 export function getExportHoldMs(keyframes: Keyframe[]): number {
   const last = keyframes[keyframes.length - 1];
   if (!last) return HOLD_LAST_FRAME_MS;
-  return Math.min(MAX_SEGMENT_MS, Math.max(MIN_SEGMENT_MS, getKeyframeDuration(last) * 1000));
+  const textHoldS = getSceneTextHoldDurationS(last.elements);
+  if (textHoldS != null) {
+    return Math.min(MAX_SEGMENT_MS, Math.max(MIN_SEGMENT_MS, textHoldS * 1000));
+  }
+  return HOLD_LAST_FRAME_MS;
 }
 
 export function getElementsAtTime(keyframes: Keyframe[], elapsedMs: number): BoardElement[] {

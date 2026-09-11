@@ -99,6 +99,8 @@ export interface BoardElement {
   borderRadius?: number;
   /** Breite des Textfelds in Feldkoordinaten */
   width?: number;
+  /** Anzeigedauer in Sekunden (Textfeld / Standbild-Szene) */
+  duration?: number;
 }
 
 export type KeyframeSpeed = "slow" | "normal" | "fast";
@@ -137,7 +139,7 @@ export interface Keyframe {
   elements: BoardElement[];
   /** Tempo der Animation von diesem Schritt zum nächsten (Legacy / Feintuning) */
   speed?: KeyframeSpeed;
-  /** Anzeigedauer dieses Schritts in Sekunden (Übergang zum nächsten) */
+  /** @deprecated Standzeit kommt von Textfeld-`duration`; nur noch Legacy */
   duration?: number;
 }
 
@@ -276,8 +278,20 @@ export function createDefaultTextBoxElement(
     bgStyle: DEFAULT_TEXT_BOX_BG_STYLE,
     borderRadius: DEFAULT_TEXT_BOX_BORDER_RADIUS,
     width: DEFAULT_TEXT_BOX_WIDTH,
+    duration: DEFAULT_KEYFRAME_DURATION_S,
     scale: 1,
   };
+}
+
+export function getTextBoxDisplayDuration(element: BoardElement): number {
+  return clampKeyframeDuration(element.duration ?? DEFAULT_KEYFRAME_DURATION_S);
+}
+
+/** Max. Textfeld-Anzeigedauer in einem Schritt, oder null wenn kein Textfeld. */
+export function getSceneTextHoldDurationS(elements: BoardElement[]): number | null {
+  const textBoxes = elements.filter((el) => el.type === "text-box");
+  if (textBoxes.length === 0) return null;
+  return Math.max(...textBoxes.map(getTextBoxDisplayDuration));
 }
 
 export interface InterpolatedElement extends BoardElement {
@@ -398,7 +412,6 @@ export function createEmptyKeyframe(index: number): Keyframe {
     label: `Schritt ${index}`,
     elements: [],
     speed: "normal",
-    duration: DEFAULT_KEYFRAME_DURATION_S,
   };
 }
 
@@ -407,6 +420,8 @@ export function getKeyframeSpeed(keyframe: Keyframe): KeyframeSpeed {
 }
 
 export function getKeyframeDuration(keyframe: Keyframe): number {
+  const fromText = getSceneTextHoldDurationS(keyframe.elements);
+  if (fromText != null) return fromText;
   const raw = keyframe.duration ?? DEFAULT_KEYFRAME_DURATION_S;
   return Math.min(MAX_KEYFRAME_DURATION_S, Math.max(MIN_KEYFRAME_DURATION_S, raw));
 }
@@ -471,16 +486,33 @@ function maxRotationDelta(from: BoardElement[], to: BoardElement[]): number {
   return maxRot;
 }
 
+const STILL_TRAVEL_EPS = 2;
+const STILL_ROTATION_EPS = 2;
+
 export interface SegmentTiming {
   durationMs: number;
 }
 
-/** Manuelle Schritt-Dauer in Sekunden (Standard 1.5s) — gilt für Playback und Export. */
-export function getSegmentTiming(from: Keyframe, _to: Keyframe): SegmentTiming {
-  const durationMs = Math.min(
-    MAX_SEGMENT_MS,
-    Math.max(MIN_SEGMENT_MS, getKeyframeDuration(from) * 1000),
-  );
+/**
+ * Standbild/Text-Szene: Textfeld-Anzeigedauer.
+ * Bewegungs-Szene: Auto-Dauer aus Distanz/Rotation (Gesamt-Tempo steuert Playback-Rate).
+ */
+export function getSegmentTiming(from: Keyframe, to: Keyframe): SegmentTiming {
+  const travel = maxTravelDistance(from.elements, to.elements);
+  const rotate = maxRotationDelta(from.elements, to.elements);
+  const isStill = travel < STILL_TRAVEL_EPS && rotate < STILL_ROTATION_EPS;
+  const textHoldS = getSceneTextHoldDurationS(from.elements);
+
+  if (isStill && textHoldS != null) {
+    const durationMs = Math.min(MAX_SEGMENT_MS, Math.max(MIN_SEGMENT_MS, textHoldS * 1000));
+    return { durationMs };
+  }
+
+  const speedFactor = KEYFRAME_SPEED_MULTIPLIER[getKeyframeSpeed(from)];
+  const travelMs = (travel / REFERENCE_SPEED_UNITS_PER_S) * 1000;
+  const rotateMs = (rotate / 90) * ROTATE_MS_PER_90;
+  const autoMs = Math.max(travelMs, rotateMs, MIN_SEGMENT_MS);
+  const durationMs = Math.min(MAX_SEGMENT_MS, Math.max(MIN_SEGMENT_MS, autoMs * speedFactor));
   return { durationMs };
 }
 

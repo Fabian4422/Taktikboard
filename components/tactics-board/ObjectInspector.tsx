@@ -5,6 +5,7 @@ import type { BoardElement, TextBoxBackgroundStyle, TextBoxFontFamily } from "@/
 import {
   CONE_COLOR_OPTIONS,
   DEFAULT_CONE_COLOR,
+  DEFAULT_KEYFRAME_DURATION_S,
   DEFAULT_TEXT_BOX_BORDER_RADIUS,
   DEFAULT_TEXT_BOX_FONT_SIZE,
   DEFAULT_TEXT_BOX_TEXT,
@@ -16,13 +17,17 @@ import {
   getTextBoxBgStyle,
   getTextBoxBorderRadius,
   getTextBoxColor,
+  getTextBoxDisplayDuration,
   getTextBoxFontFamily,
   getTextBoxFontSize,
   isRotatable,
   isTextBoxType,
+  MAX_KEYFRAME_DURATION_S,
+  MIN_KEYFRAME_DURATION_S,
   TEXT_BOX_BG_STYLE_OPTIONS,
   TEXT_BOX_FONT_OPTIONS,
   TEXT_COLOR_OPTIONS,
+  clampKeyframeDuration,
 } from "@/lib/tactics-board/types";
 import { ELEMENT_META } from "@/lib/tactics-board/elementStyles";
 
@@ -41,6 +46,7 @@ type ElementPatch = Partial<
     | "bgStyle"
     | "borderRadius"
     | "width"
+    | "duration"
   >
 >;
 
@@ -107,6 +113,7 @@ export function ObjectInspector({
   const bgColor = getTextBoxBgColor(element);
   const bgStyle = getTextBoxBgStyle(element);
   const borderRadius = getTextBoxBorderRadius(element);
+  const displayDuration = getTextBoxDisplayDuration(element);
 
   return (
     <aside
@@ -280,6 +287,42 @@ export function ObjectInspector({
               />
             )}
           </div>
+
+          <label className="flex flex-col gap-1">
+            <span className="flex justify-between text-xs text-slate-400">
+              <span>Anzeigedauer</span>
+              <span>{displayDuration.toFixed(1)}s</span>
+            </span>
+            <input
+              type="range"
+              min={MIN_KEYFRAME_DURATION_S}
+              max={MAX_KEYFRAME_DURATION_S}
+              step={0.1}
+              value={displayDuration}
+              onChange={(e) =>
+                onUpdate({
+                  duration: clampKeyframeDuration(parseNumber(e.target.value, DEFAULT_KEYFRAME_DURATION_S)),
+                })
+              }
+              className="w-full accent-sky-400"
+            />
+            <input
+              type="number"
+              min={MIN_KEYFRAME_DURATION_S}
+              max={MAX_KEYFRAME_DURATION_S}
+              step={0.1}
+              value={Number(displayDuration.toFixed(1))}
+              onChange={(e) => {
+                const raw = Number.parseFloat(e.target.value);
+                if (!Number.isFinite(raw)) return;
+                onUpdate({ duration: clampKeyframeDuration(raw) });
+              }}
+              className="rounded-lg border border-slate-600 bg-slate-950 px-2 py-1.5 text-sm text-white"
+            />
+            <p className="text-[11px] text-slate-500">
+              Steuert die Standzeit dieses Schritts in Vorschau und Export (bei Standbild ohne Bewegung).
+            </p>
+          </label>
 
           <label className="flex flex-col gap-1">
             <span className="flex justify-between text-xs text-slate-400">

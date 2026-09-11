@@ -21,8 +21,6 @@ import {
   DEFAULT_PLAYER_SCALE_PERCENT,
   DEFAULT_CONE_COLOR,
   getElementScale,
-  clampKeyframeDuration,
-  DEFAULT_KEYFRAME_DURATION_S,
   type FieldRotation,
   type FieldView,
   type KeyframeSpeed,
@@ -87,6 +85,7 @@ function hasManualOverride(prev: BoardElement, curr: BoardElement): boolean {
   if ((curr.bgStyle ?? "") !== (prev.bgStyle ?? "")) return true;
   if ((curr.borderRadius ?? null) !== (prev.borderRadius ?? null)) return true;
   if ((curr.width ?? null) !== (prev.width ?? null)) return true;
+  if ((curr.duration ?? null) !== (prev.duration ?? null)) return true;
   if (pointsDiffer(prev.points, curr.points)) return true;
   return false;
 }
@@ -481,7 +480,6 @@ export function useTacticsBoard(initialDocument?: TacticsBoardDocument) {
         label: `Schritt ${newIndex}`,
         elements: cloneElements(last.elements),
         speed: last.speed ?? "normal",
-        duration: last.duration ?? DEFAULT_KEYFRAME_DURATION_S,
       };
       const keyframes = [...prev.keyframes, newKeyframe];
       setCurrentStepIndex(keyframes.length - 1);
@@ -562,6 +560,7 @@ export function useTacticsBoard(initialDocument?: TacticsBoardDocument) {
           | "bgStyle"
           | "borderRadius"
           | "width"
+          | "duration"
         >
       >,
     ) => {
@@ -612,31 +611,11 @@ export function useTacticsBoard(initialDocument?: TacticsBoardDocument) {
     });
   }, [isPlaying]);
 
-  const setKeyframeDuration = useCallback((index: number, duration: number) => {
-    if (isPlaying) return;
-    const clamped = clampKeyframeDuration(duration);
-    setDocument((prev) => {
-      const keyframes = [...prev.keyframes];
-      if (!keyframes[index]) return prev;
-      keyframes[index] = { ...keyframes[index], duration: clamped };
-      return { ...prev, keyframes };
-    });
-  }, [isPlaying]);
-
   const setAllKeyframeSpeeds = useCallback((speed: KeyframeSpeed) => {
     if (isPlaying) return;
     setDocument((prev) => ({
       ...prev,
       keyframes: prev.keyframes.map((kf) => ({ ...kf, speed })),
-    }));
-  }, [isPlaying]);
-
-  const setAllKeyframeDurations = useCallback((duration: number) => {
-    if (isPlaying) return;
-    const clamped = clampKeyframeDuration(duration);
-    setDocument((prev) => ({
-      ...prev,
-      keyframes: prev.keyframes.map((kf) => ({ ...kf, duration: clamped })),
     }));
   }, [isPlaying]);
 
@@ -884,8 +863,6 @@ export function useTacticsBoard(initialDocument?: TacticsBoardDocument) {
     setPlaybackRate,
     setKeyframeSpeed,
     setAllKeyframeSpeeds,
-    setKeyframeDuration,
-    setAllKeyframeDurations,
     updateSelectedElement,
   };
 }
