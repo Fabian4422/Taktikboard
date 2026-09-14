@@ -52,13 +52,24 @@ export interface SaveTacticsBoardOptions {
 
 export type SaveTacticsBoardResult = SaveTacticResult;
 
+type SupabaseLikeError = {
+  message?: string;
+  code?: string;
+  details?: string;
+  hint?: string;
+};
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
 /**
- * Serialisiert Board-Daten für JSONB: entfernt undefined, behält Textfeld-`duration`
- * und alle Elementfelder ohne Schema-Abweichung (eine JSONB-Spalte).
+ * Serialisiert Board-Daten ausschließlich für die JSONB-Spalte `board_data`.
+ * Textfelder, Schrittdauern usw. liegen in keyframes[].elements — nie als Tabellen-Spalten.
  */
 function documentToBoardData(document: TacticsBoardDocument): BoardData {
   const raw: BoardData = {
-    keyframes: document.keyframes,
+    keyframes: document.keyframes ?? [],
     fieldWidth: document.fieldWidth,
     fieldHeight: document.fieldHeight,
     fieldView: document.fieldView,
@@ -66,12 +77,85 @@ function documentToBoardData(document: TacticsBoardDocument): BoardData {
     coordSpace: document.coordSpace ?? "viewport",
   };
   try {
-    return JSON.parse(JSON.stringify(raw)) as BoardData;
+    const parsed = JSON.parse(JSON.stringify(raw)) as BoardData;
+    // Nur bekannte JSONB-Keys — keine fremden Root-Felder aus dem Dokument
+    return {
+      keyframes: Array.isArray(parsed.keyframes) ? parsed.keyframes : [],
+      fieldWidth: parsed.fieldWidth,
+      fieldHeight: parsed.fieldHeight,
+      ...(parsed.fieldView ? { fieldView: parsed.fieldView } : {}),
+      ...(parsed.fieldRotation != null ? { fieldRotation: parsed.fieldRotation } : {}),
+      coordSpace: parsed.coordSpace ?? "viewport",
+    };
   } catch (error) {
     console.error("[tactics/supabase] board_data JSON-Serialisierung fehlgeschlagen", error);
     throw new Error(
       `board_data nicht serialisierbar: ${error instanceof Error ? error.message : String(error)}`,
     );
+  }
+}
+
+/** Nur Spalten, die in public.tactics existieren (002_tactics.sql). */
+function buildTacticsWritePayload(params: {
+  title: string;
+  boardData: BoardData;
+  videoUrl?: string | null;
+  includeVideoUrl: boolean;
+}): Record<string, unknown> {
+  const row: Record<string, unknown> = {
+    title: params.title,
+    board_data: params.boardData,
+  };
+  if (params.includeVideoUrl) {
+    row.video_url = params.videoUrl ?? null;
+  }
+  return row;
+}
+
+/** Extrahiert message / details / hint oder JSON — nie eine Pauschalmeldung. */
+export function extractSupabaseErrorText(error: unknown, fallback = "Unbekannter Speichern-Fehler"): string {
+  if (error == null || error === "") return fallback;
+
+  if (typeof error === "string") {
+    return error.trim() || fallback;
+  }
+
+  if (error instanceof Error) {
+    const anyErr = error as Error & SupabaseLikeError;
+    const parts = [
+      anyErr.message?.trim() || null,
+      anyErr.details ? String(anyErr.details) : null,
+      anyErr.hint ? `hint=${anyErr.hint}` : null,
+      anyErr.code ? `code=${anyErr.code}` : null,
+    ].filter(Boolean);
+    if (parts.length > 0) return parts.join(" | ");
+  }
+
+  if (isPlainObject(error)) {
+    const message = typeof error.message === "string" ? error.message.trim() : "";
+    const details = typeof error.details === "string" ? error.details.trim() : "";
+    const hint = typeof error.hint === "string" ? error.hint.trim() : "";
+    const code = typeof error.code === "string" ? error.code.trim() : "";
+    if (message || details || hint || code) {
+      return [message || null, details || null, hint ? `hint=${hint}` : null, code ? `code=${code}` : null]
+        .filter(Boolean)
+        .join(" | ");
+    }
+    try {
+      return JSON.stringify(error);
+    } catch {
+      return fallback;
+    }
+  }
+
+  try {
+    return JSON.stringify(error);
+  } catch {
+    try {
+      return String(error);
+    } catch {
+      return fallback;
+    }
   }
 }
 
@@ -112,34 +196,17 @@ function extensionFromFilename(filename: string, mimeType: string): string {
   return "mp4";
 }
 
-type SupabaseLikeError = {
-  message?: string;
-  code?: string;
-  details?: string;
-  hint?: string;
-};
-
 /** Formatiert Supabase/PostgREST-Fehler inkl. message/details/hint für Toast + Konsole. */
 export function formatSupabaseError(
   error: SupabaseLikeError | null | undefined,
   fallback: string,
 ): string {
   if (!error) return fallback;
-  let raw = (error.message || "").trim() || fallback;
-  if (/row-level security|rls/i.test(raw) || error.code === "42501") {
-    raw = `Fehler beim Speichern: Row Level Security blockiert (${raw})`;
+  const text = extractSupabaseErrorText(error, fallback);
+  if (/row-level security|rls/i.test(text) || error.code === "42501") {
+    return `Fehler beim Speichern: Row Level Security blockiert (${text})`;
   }
-  const parts = [
-    raw,
-    error.code ? `code=${error.code}` : null,
-    error.details ? `details=${error.details}` : null,
-    error.hint ? `hint=${error.hint}` : null,
-  ].filter(Boolean);
-  return parts.join(" | ");
-}
-
-function isPlainObject(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
+  return text;
 }
 
 /** Erkennt typische Netzwerk-/Fetch-Fehler (Tablet, PWA, Offline). */
@@ -149,55 +216,17 @@ function isNetworkFetchError(message: string): boolean {
   );
 }
 
-/** Extrahiert lesbare Speichern-Fehler (Error, PostgREST, verschachtelt). */
+/** Extrahiert lesbare Speichern-Fehler — immer die konkrete Meldung, nie Pauschaltext. */
 export function toSaveUserMessage(
   error: unknown,
   fallback = "Fehler beim Speichern in Supabase",
 ): string {
-  if (error == null || error === "") return fallback;
-
-  if (typeof error === "string") {
-    const raw = error.trim() || fallback;
-    if (isNetworkFetchError(raw)) {
-      return `Fehler beim Speichern: Netzwerkfehler (${raw}). Verbindung prüfen oder Seite neu laden.`;
-    }
-    return raw;
+  const text = extractSupabaseErrorText(error, fallback);
+  if (isNetworkFetchError(text)) {
+    // Originaltext behalten (z. B. Failed to fetch), nur Kontext ergänzen
+    return `Speichern fehlgeschlagen: ${text}`;
   }
-
-  if (error instanceof Error) {
-    const anyErr = error as Error & SupabaseLikeError;
-    const msg = anyErr.message?.trim() || fallback;
-    if (isNetworkFetchError(msg)) {
-      return `Fehler beim Speichern: Netzwerkfehler (${msg}). Verbindung prüfen oder Seite neu laden.`;
-    }
-    if (anyErr.details || anyErr.hint || anyErr.code) {
-      return formatSupabaseError(anyErr, msg);
-    }
-    return msg;
-  }
-
-  if (isPlainObject(error)) {
-    const msg = typeof error.message === "string" ? error.message : "";
-    const details = typeof error.details === "string" ? error.details : undefined;
-    const hint = typeof error.hint === "string" ? error.hint : undefined;
-    const code = typeof error.code === "string" ? error.code : undefined;
-    if (isNetworkFetchError(msg)) {
-      return `Fehler beim Speichern: Netzwerkfehler (${msg || "Failed to fetch"}). Verbindung prüfen oder Seite neu laden.`;
-    }
-    if (msg || details || hint || code) {
-      return formatSupabaseError({ message: msg || fallback, details, hint, code }, fallback);
-    }
-  }
-
-  try {
-    const asString = String(error);
-    if (isNetworkFetchError(asString)) {
-      return `Fehler beim Speichern: Netzwerkfehler (${asString}). Verbindung prüfen oder Seite neu laden.`;
-    }
-    return asString;
-  } catch {
-    return fallback;
-  }
+  return text;
 }
 
 function logSupabase(label: string, payload: Record<string, unknown>) {
@@ -263,15 +292,17 @@ export async function saveTactic(params: {
       }
     }
 
-    const payload = {
+    const payload = buildTacticsWritePayload({
       title,
-      board_data: params.boardData,
-      video_url: videoUrl,
-    };
+      boardData: params.boardData,
+      videoUrl,
+      includeVideoUrl: true,
+    });
 
     logSupabase("INSERT start", {
       table: TACTICS_TABLE,
       title,
+      payloadKeys: Object.keys(payload),
       keyframeCount: params.boardData.keyframes?.length ?? 0,
       hasVideo: Boolean(videoUrl),
       userIdFilter: null,
@@ -288,12 +319,13 @@ export async function saveTactic(params: {
     let data: { id: string } | null = null;
     let error: SupabaseLikeError | null = null;
     try {
+      // Nur Spalten der Tabelle tactics: title, board_data, video_url
       const result = await supabase.from(TACTICS_TABLE).insert(payload).select("id").single();
       data = result.data;
       error = result.error;
     } catch (fetchError) {
       console.error("[tactics/supabase] INSERT fetch exception", fetchError);
-      return { success: false, error: toSaveUserMessage(fetchError) };
+      return { success: false, error: extractSupabaseErrorText(fetchError) };
     }
 
     logSupabase("INSERT result", { data, error });
@@ -378,15 +410,19 @@ export async function updateTactic(params: {
       }
     }
 
-    const payload: Record<string, unknown> = {
+    const payload = buildTacticsWritePayload({
       title,
-      board_data: params.boardData,
-    };
-    if (videoUrl !== undefined) {
-      payload.video_url = videoUrl;
-    }
+      boardData: params.boardData,
+      videoUrl,
+      includeVideoUrl: videoUrl !== undefined,
+    });
 
-    logSupabase("UPDATE start", { table: TACTICS_TABLE, id: params.id, title });
+    logSupabase("UPDATE start", {
+      table: TACTICS_TABLE,
+      id: params.id,
+      title,
+      payloadKeys: Object.keys(payload),
+    });
 
     const supabase = getSupabaseClient();
     if (!supabase) {
@@ -409,7 +445,7 @@ export async function updateTactic(params: {
       error = result.error;
     } catch (fetchError) {
       console.error("[tactics/supabase] UPDATE fetch exception", fetchError);
-      return { success: false, error: toSaveUserMessage(fetchError) };
+      return { success: false, error: extractSupabaseErrorText(fetchError) };
     }
 
     logSupabase("UPDATE result", { data, error });

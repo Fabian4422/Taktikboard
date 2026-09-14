@@ -27,8 +27,6 @@ import {
 import { ExerciseLibraryModal } from "./tactics-board/ExerciseLibraryModal";
 
 const LOAD_FAILURE_TOAST = "Übung konnte nicht geladen werden";
-const SAVE_NETWORK_TOAST =
-  "Speichern fehlgeschlagen. Bitte Internetverbindung prüfen.";
 
 /** Konva erst nach Mount (kein SSR auf window) — ohne next/dynamic / await import. */
 function FieldCanvas(props: ComponentProps<typeof FieldCanvasImpl>) {
@@ -177,13 +175,26 @@ export function TacticsBoard({ exerciseId, initialName }: TacticsBoardProps) {
       console.error("[TacticsBoard] Speichern fehlgeschlagen:", message);
       setSaveStatus(message);
       setToastWarning(message);
-      window.setTimeout(() => setToastWarning(null), 8000);
+      window.setTimeout(() => setToastWarning(null), 10000);
     };
 
     try {
       const configError = getSupabaseConfigError();
       if (configError || !isSupabaseConfigured()) {
-        showSaveError(configError ?? "Supabase ist nicht konfiguriert.");
+        showSaveError(
+          configError ??
+            "Supabase ist nicht konfiguriert (NEXT_PUBLIC_SUPABASE_URL / NEXT_PUBLIC_SUPABASE_ANON_KEY).",
+        );
+        return;
+      }
+
+      // Kurz prüfen, dass Env-Variablen im Client wirklich gesetzt sind
+      const envUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+      const envKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+      if (!envUrl || !envKey) {
+        showSaveError(
+          `Supabase-Env fehlt: URL=${envUrl ? "ok" : "undefined"}, ANON_KEY=${envKey ? "ok" : "undefined"}`,
+        );
         return;
       }
 
@@ -211,18 +222,10 @@ export function TacticsBoard({ exerciseId, initialName }: TacticsBoardProps) {
         return;
       }
 
-      const errText = result.error ?? "";
-      if (/failed to fetch|networkerror|netzwerk/i.test(errText)) {
-        showSaveError(SAVE_NETWORK_TOAST);
-        return;
-      }
-      showSaveError(errText || SAVE_NETWORK_TOAST);
+      // Immer die konkrete Supabase-/API-Meldung anzeigen — keine Pauschal-Netzwerk-Toast
+      showSaveError(result.error?.trim() || "Speichern fehlgeschlagen (keine Fehlerdetails).");
     } catch (error) {
-      showSaveError(
-        /failed to fetch|networkerror/i.test(toSaveUserMessage(error))
-          ? SAVE_NETWORK_TOAST
-          : toSaveUserMessage(error, SAVE_NETWORK_TOAST),
-      );
+      showSaveError(toSaveUserMessage(error));
     } finally {
       setIsSaving(false);
     }
