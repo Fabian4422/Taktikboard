@@ -42,6 +42,49 @@ function withOptionalPWA(config: NextConfig): NextConfig {
     reloadOnOnline: true,
     workboxOptions: {
       disableDevLogs: true,
+      // Ersetzt Defaults: Supabase nie cachen; Next-Assets mit kurzer CacheFirst-Strategie
+      runtimeCaching: [
+        {
+          urlPattern: ({ url }: { url: URL }) =>
+            url.hostname.endsWith("supabase.co") || url.hostname.includes("supabase"),
+          handler: "NetworkOnly" as const,
+        },
+        {
+          urlPattern: /\/_next\/static\/.*/i,
+          handler: "CacheFirst" as const,
+          options: {
+            cacheName: "next-static",
+            expiration: {
+              maxEntries: 128,
+              maxAgeSeconds: 60 * 60 * 24,
+            },
+          },
+        },
+        {
+          urlPattern: /\/_next\/data\/.*/i,
+          handler: "NetworkFirst" as const,
+          options: {
+            cacheName: "next-data",
+            networkTimeoutSeconds: 10,
+            expiration: {
+              maxEntries: 64,
+              maxAgeSeconds: 60 * 60 * 24,
+            },
+          },
+        },
+        {
+          urlPattern: ({ request }: { request: Request }) => request.destination === "document",
+          handler: "NetworkFirst" as const,
+          options: {
+            cacheName: "documents",
+            networkTimeoutSeconds: 10,
+            expiration: {
+              maxEntries: 32,
+              maxAgeSeconds: 60 * 60 * 24,
+            },
+          },
+        },
+      ],
     },
   });
 

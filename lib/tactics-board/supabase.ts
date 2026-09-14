@@ -1,10 +1,11 @@
 import type { FieldRotation, FieldView, Keyframe, TacticsBoardDocument } from "./types";
 import { FIELD_HEIGHT, FIELD_WIDTH } from "./types";
 import { migrateTacticsDocument } from "./fieldLayout";
-import { getSupabaseClient, isSupabaseConfigured } from "@/lib/supabaseClient";
+import { getSupabaseClient, isSupabaseConfigured, getSupabaseConfigError } from "@/lib/supabaseClient";
 import { createId } from "@/lib/uuid";
+import { isChunkLoadError, recoverFromChunkLoadError } from "@/lib/chunkLoadRecovery";
 
-export { isSupabaseConfigured };
+export { isSupabaseConfigured, getSupabaseConfigError };
 
 /** Aktuelle Speichertabelle (nicht `tactics_boards` / `boards`). */
 export const TACTICS_TABLE = "tactics";
@@ -125,7 +126,10 @@ export function formatSupabaseError(
   fallback: string,
 ): string {
   if (!error) return fallback;
-  const raw = (error.message || "").trim() || fallback;
+  let raw = (error.message || "").trim() || fallback;
+  if (/row-level security|rls/i.test(raw) || error.code === "42501") {
+    raw = `Fehler beim Speichern: Row Level Security blockiert (${raw})`;
+  }
   const parts = [
     raw,
     error.code ? `code=${error.code}` : null,
@@ -139,6 +143,13 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
+/** Erkennt typische Netzwerk-/Fetch-Fehler (Tablet, PWA, Offline). */
+function isNetworkFetchError(message: string): boolean {
+  return /failed to fetch|networkerror|load failed|fetch failed|network request failed|err_network|typeerror:\s*failed to fetch/i.test(
+    message,
+  );
+}
+
 /** Extrahiert lesbare Speichern-Fehler (Error, PostgREST, verschachtelt). */
 export function toSaveUserMessage(
   error: unknown,
@@ -146,16 +157,29 @@ export function toSaveUserMessage(
 ): string {
   if (error == null || error === "") return fallback;
 
+  if (isChunkLoadError(error)) {
+    recoverFromChunkLoadError(error);
+    return "Fehler beim Speichern: App-Dateien veraltet (Chunk-Load). Seite wird neu geladen…";
+  }
+
   if (typeof error === "string") {
-    return error.trim() || fallback;
+    const raw = error.trim() || fallback;
+    if (isNetworkFetchError(raw)) {
+      return `Fehler beim Speichern: Netzwerkfehler (${raw}). Verbindung prüfen oder Seite neu laden.`;
+    }
+    return raw;
   }
 
   if (error instanceof Error) {
     const anyErr = error as Error & SupabaseLikeError;
-    if (anyErr.details || anyErr.hint || anyErr.code) {
-      return formatSupabaseError(anyErr, anyErr.message || fallback);
+    const msg = anyErr.message?.trim() || fallback;
+    if (isNetworkFetchError(msg)) {
+      return `Fehler beim Speichern: Netzwerkfehler (${msg}). Verbindung prüfen oder Seite neu laden.`;
     }
-    return anyErr.message?.trim() || fallback;
+    if (anyErr.details || anyErr.hint || anyErr.code) {
+      return formatSupabaseError(anyErr, msg);
+    }
+    return msg;
   }
 
   if (isPlainObject(error)) {
@@ -163,13 +187,20 @@ export function toSaveUserMessage(
     const details = typeof error.details === "string" ? error.details : undefined;
     const hint = typeof error.hint === "string" ? error.hint : undefined;
     const code = typeof error.code === "string" ? error.code : undefined;
+    if (isNetworkFetchError(msg)) {
+      return `Fehler beim Speichern: Netzwerkfehler (${msg || "Failed to fetch"}). Verbindung prüfen oder Seite neu laden.`;
+    }
     if (msg || details || hint || code) {
       return formatSupabaseError({ message: msg || fallback, details, hint, code }, fallback);
     }
   }
 
   try {
-    return String(error);
+    const asString = String(error);
+    if (isNetworkFetchError(asString)) {
+      return `Fehler beim Speichern: Netzwerkfehler (${asString}). Verbindung prüfen oder Seite neu laden.`;
+    }
+    return asString;
   } catch {
     return fallback;
   }
@@ -209,7 +240,7 @@ async function uploadTacticVideo(
 }
 
 /**
- * Speichert eine Übung in der Tabelle `tactics`.
+ * Speichert eine Übung in der Tabelle `tactics` (JSONB board_data).
  * Kein user_id-Filter: Gäste speichern anonym über den anon-Key (RLS muss SELECT+INSERT erlauben).
  */
 export async function saveTactic(params: {
@@ -217,11 +248,9 @@ export async function saveTactic(params: {
   boardData: BoardData;
   video?: TacticExportFile | null;
 }): Promise<SaveTacticResult> {
-  if (!isSupabaseConfigured()) {
-    return {
-      success: false,
-      error: "Supabase ist nicht konfiguriert (NEXT_PUBLIC_SUPABASE_URL / ANON_KEY fehlen).",
-    };
+  const configError = getSupabaseConfigError();
+  if (configError) {
+    return { success: false, error: configError };
   }
 
   const title = params.title.trim();
@@ -232,8 +261,12 @@ export async function saveTactic(params: {
   try {
     let videoUrl: string | null = null;
     if (params.video?.blob && params.video.blob.size > 0) {
-      const uploaded = await uploadTacticVideo(title, params.video);
-      videoUrl = uploaded.publicUrl;
+      try {
+        const uploaded = await uploadTacticVideo(title, params.video);
+        videoUrl = uploaded.publicUrl;
+      } catch (uploadError) {
+        return { success: false, error: toSaveUserMessage(uploadError, "Video-Upload fehlgeschlagen.") };
+      }
     }
 
     const payload = {
@@ -247,7 +280,6 @@ export async function saveTactic(params: {
       title,
       keyframeCount: params.boardData.keyframes?.length ?? 0,
       hasVideo: Boolean(videoUrl),
-      // Kein user_id — anon-Gastzugriff über RLS
       userIdFilter: null,
     });
 
@@ -255,11 +287,20 @@ export async function saveTactic(params: {
     if (!supabase) {
       return {
         success: false,
-        error: "Supabase ist nicht konfiguriert (NEXT_PUBLIC_SUPABASE_URL / ANON_KEY fehlen).",
+        error: getSupabaseConfigError() ?? "Supabase-Client konnte nicht initialisiert werden.",
       };
     }
 
-    const { data, error } = await supabase.from(TACTICS_TABLE).insert(payload).select("id").single();
+    let data: { id: string } | null = null;
+    let error: SupabaseLikeError | null = null;
+    try {
+      const result = await supabase.from(TACTICS_TABLE).insert(payload).select("id").single();
+      data = result.data;
+      error = result.error;
+    } catch (fetchError) {
+      console.error("[tactics/supabase] INSERT fetch exception", fetchError);
+      return { success: false, error: toSaveUserMessage(fetchError) };
+    }
 
     logSupabase("INSERT result", { data, error });
 
@@ -279,26 +320,30 @@ export async function saveTactic(params: {
       return { success: false, error: message };
     }
 
-    // Sofort prüfen, ob die Zeile für den anon-Key auch lesbar ist
-    const verify = await supabase
-      .from(TACTICS_TABLE)
-      .select("id, title")
-      .eq("id", data.id)
-      .maybeSingle();
+    try {
+      const verify = await supabase
+        .from(TACTICS_TABLE)
+        .select("id, title")
+        .eq("id", data.id)
+        .maybeSingle();
 
-    logSupabase("INSERT verify SELECT", {
-      id: data.id,
-      data: verify.data,
-      error: verify.error,
-    });
+      logSupabase("INSERT verify SELECT", {
+        id: data.id,
+        data: verify.data,
+        error: verify.error,
+      });
 
-    if (verify.error || !verify.data) {
-      const message = formatSupabaseError(
-        verify.error,
-        "Übung wurde geschrieben, ist aber nicht lesbar (SELECT-RLS für Role „anon“ fehlt).",
-      );
-      console.error("[tactics/supabase] INSERT verify failed — Bibliothek bleibt leer", verify);
-      return { success: false, error: message };
+      if (verify.error || !verify.data) {
+        const message = formatSupabaseError(
+          verify.error,
+          "Übung wurde geschrieben, ist aber nicht lesbar (SELECT-RLS für Role „anon“ fehlt).",
+        );
+        console.error("[tactics/supabase] INSERT verify failed — Bibliothek bleibt leer", verify);
+        return { success: false, error: message };
+      }
+    } catch (verifyError) {
+      console.error("[tactics/supabase] INSERT verify exception", verifyError);
+      return { success: false, error: toSaveUserMessage(verifyError) };
     }
 
     return { success: true, id: data.id, videoUrl };
@@ -318,11 +363,9 @@ export async function updateTactic(params: {
   boardData: BoardData;
   video?: TacticExportFile | null;
 }): Promise<SaveTacticResult> {
-  if (!isSupabaseConfigured()) {
-    return {
-      success: false,
-      error: "Supabase ist nicht konfiguriert (NEXT_PUBLIC_SUPABASE_URL / ANON_KEY fehlen).",
-    };
+  const configError = getSupabaseConfigError();
+  if (configError) {
+    return { success: false, error: configError };
   }
 
   const title = params.title.trim();
@@ -333,8 +376,12 @@ export async function updateTactic(params: {
   try {
     let videoUrl: string | null | undefined;
     if (params.video?.blob && params.video.blob.size > 0) {
-      const uploaded = await uploadTacticVideo(title, params.video);
-      videoUrl = uploaded.publicUrl;
+      try {
+        const uploaded = await uploadTacticVideo(title, params.video);
+        videoUrl = uploaded.publicUrl;
+      } catch (uploadError) {
+        return { success: false, error: toSaveUserMessage(uploadError, "Video-Upload fehlgeschlagen.") };
+      }
     }
 
     const payload: Record<string, unknown> = {
@@ -351,16 +398,25 @@ export async function updateTactic(params: {
     if (!supabase) {
       return {
         success: false,
-        error: "Supabase ist nicht konfiguriert (NEXT_PUBLIC_SUPABASE_URL / ANON_KEY fehlen).",
+        error: getSupabaseConfigError() ?? "Supabase-Client konnte nicht initialisiert werden.",
       };
     }
 
-    const { data, error } = await supabase
-      .from(TACTICS_TABLE)
-      .update(payload)
-      .eq("id", params.id)
-      .select("id, video_url")
-      .single();
+    let data: { id: string; video_url: string | null } | null = null;
+    let error: SupabaseLikeError | null = null;
+    try {
+      const result = await supabase
+        .from(TACTICS_TABLE)
+        .update(payload)
+        .eq("id", params.id)
+        .select("id, video_url")
+        .single();
+      data = result.data;
+      error = result.error;
+    } catch (fetchError) {
+      console.error("[tactics/supabase] UPDATE fetch exception", fetchError);
+      return { success: false, error: toSaveUserMessage(fetchError) };
+    }
 
     logSupabase("UPDATE result", { data, error });
 
@@ -398,11 +454,11 @@ export async function saveTacticsBoard(
   options: SaveTacticsBoardOptions = {},
 ): Promise<SaveTacticsBoardResult> {
   try {
-    if (!isSupabaseConfigured() || !getSupabaseClient()) {
+    const configError = getSupabaseConfigError();
+    if (configError || !getSupabaseClient()) {
       return {
         success: false,
-        error:
-          "Supabase ist nicht konfiguriert (NEXT_PUBLIC_SUPABASE_URL / ANON_KEY fehlen).",
+        error: configError ?? "Supabase-Client konnte nicht initialisiert werden.",
       };
     }
 

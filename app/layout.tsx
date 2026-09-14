@@ -1,5 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
+import { AppErrorBoundary } from "@/components/AppErrorBoundary";
+import { ChunkLoadRecovery } from "@/components/ChunkLoadRecovery";
 
 export const metadata: Metadata = {
   title: "WSV Academy Taktikboard",
@@ -35,7 +37,10 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="de">
-      <body className="min-h-screen antialiased">{children}</body>
+      <body className="min-h-screen antialiased">
+        <ChunkLoadRecovery />
+        <AppErrorBoundary>{children}</AppErrorBoundary>
+      </body>
     </html>
   );
 }

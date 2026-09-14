@@ -13,8 +13,10 @@ import {
   saveTacticsBoard,
   loadTacticsBoard,
   isSupabaseConfigured,
+  getSupabaseConfigError,
   toSaveUserMessage,
 } from "@/lib/tactics-board/supabase";
+import { recoverFromChunkLoadError, isChunkLoadError } from "@/lib/chunkLoadRecovery";
 import { exportTacticsAnimation, type ExportFormat } from "@/lib/tactics-board/exportAnimation";
 import { FIELD_HEIGHT, FIELD_WIDTH, createEmptyKeyframe } from "@/lib/tactics-board/types";
 import {
@@ -28,7 +30,23 @@ import { ExerciseLibraryModal } from "./tactics-board/ExerciseLibraryModal";
 const LOAD_FAILURE_TOAST = "Übung konnte nicht geladen werden";
 
 const FieldCanvas = dynamic(
-  () => import("./tactics-board/FieldCanvas").then((m) => m.FieldCanvas),
+  () =>
+    import("./tactics-board/FieldCanvas")
+      .then((m) => m.FieldCanvas)
+      .catch((error) => {
+        console.error("[TacticsBoard] FieldCanvas-Chunk fehlgeschlagen:", error);
+        if (isChunkLoadError(error) || /failed to fetch/i.test(String(error?.message ?? error))) {
+          recoverFromChunkLoadError(error);
+        }
+        // Fallback-Komponente verhindert harten Crash während Reload
+        return function FieldCanvasChunkError() {
+          return (
+            <div className="flex aspect-video w-full items-center justify-center rounded-xl border border-amber-500/40 bg-slate-900/80 px-4 text-center text-sm text-amber-100">
+              Spielfeld-Modul konnte nicht geladen werden. Seite wird aktualisiert…
+            </div>
+          );
+        };
+      }),
   {
     ssr: false,
     loading: () => (
@@ -51,6 +69,7 @@ export function TacticsBoard({ exerciseId, initialName }: TacticsBoardProps) {
   const stageRef = useRef<Konva.Stage | null>(null);
   const previewRef = useRef<HTMLDivElement>(null);
   const [saveStatus, setSaveStatus] = useState<string | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
   const [boardName, setBoardName] = useState(initialName ?? "Neues Taktikboard");
   const [isLoading, setIsLoading] = useState(Boolean(exerciseId));
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -161,21 +180,25 @@ export function TacticsBoard({ exerciseId, initialName }: TacticsBoardProps) {
   }, []);
 
   const handleSave = useCallback(async () => {
+    if (isSaving) return;
+    setIsSaving(true);
     setSaveStatus("Speichern…");
     setLoadError(null);
 
     const showSaveError = (message: string, cause?: unknown) => {
       console.error("[TacticsBoard] Speichern fehlgeschlagen:", message, cause ?? "");
+      if (isChunkLoadError(cause) || isChunkLoadError(message)) {
+        recoverFromChunkLoadError(cause ?? message);
+      }
       setSaveStatus(message);
       setToastWarning(message);
       window.setTimeout(() => setToastWarning(null), 8000);
     };
 
     try {
-      if (!isSupabaseConfigured()) {
-        showSaveError(
-          "Supabase ist nicht konfiguriert (NEXT_PUBLIC_SUPABASE_URL / ANON_KEY fehlen).",
-        );
+      const configError = getSupabaseConfigError();
+      if (configError || !isSupabaseConfigured()) {
+        showSaveError(configError ?? "Supabase ist nicht konfiguriert.");
         return;
       }
 
@@ -207,6 +230,9 @@ export function TacticsBoard({ exerciseId, initialName }: TacticsBoardProps) {
           );
         } catch (navError) {
           console.warn("[TacticsBoard] Navigation nach Speichern fehlgeschlagen:", navError);
+          if (isChunkLoadError(navError)) {
+            recoverFromChunkLoadError(navError);
+          }
         }
         setSaveStatus("Gespeichert!");
         window.setTimeout(() => setSaveStatus(null), 3000);
@@ -216,8 +242,10 @@ export function TacticsBoard({ exerciseId, initialName }: TacticsBoardProps) {
       showSaveError(result.error ?? "Fehler beim Speichern in Supabase", result);
     } catch (error) {
       showSaveError(toSaveUserMessage(error), error);
+    } finally {
+      setIsSaving(false);
     }
-  }, [board, boardName, exerciseId, router]);
+  }, [board, boardName, exerciseId, isSaving, router]);
 
   const handleLibraryLoad = useCallback(
     async (id: string, title: string) => {
@@ -422,9 +450,10 @@ export function TacticsBoard({ exerciseId, initialName }: TacticsBoardProps) {
             <button
               type="button"
               onClick={handleSave}
-              className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-500"
+              disabled={isSaving}
+              className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-60"
             >
-              In Supabase speichern
+              {isSaving ? "Speichern…" : "In Supabase speichern"}
             </button>
             {!isSupabaseConfigured() && (
               <span className="text-xs text-amber-400">Supabase nicht konfiguriert</span>
