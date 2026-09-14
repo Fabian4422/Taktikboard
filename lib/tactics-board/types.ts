@@ -260,6 +260,84 @@ export function getTextBoxBackgroundOpacity(style: TextBoxBackgroundStyle): numb
   return 1;
 }
 
+/** Zeilenumbruch-Schätzung für Canvas-/Konva-Textfelder (word-break + Multi-Line). */
+export function estimateTextBoxLineCount(
+  text: string,
+  contentWidth: number,
+  fontSize: number,
+): number {
+  const charsPerLine = Math.max(1, Math.floor(contentWidth / Math.max(6, fontSize * 0.52)));
+  const paragraphs = text.split("\n");
+  let total = 0;
+
+  for (const paragraph of paragraphs) {
+    if (!paragraph) {
+      total += 1;
+      continue;
+    }
+    const words = paragraph.split(/(\s+)/).filter((w) => w.length > 0);
+    let col = 0;
+    let lines = 1;
+    for (const word of words) {
+      const len = word.length;
+      if (col === 0) {
+        if (len <= charsPerLine) {
+          col = len;
+        } else {
+          lines += Math.ceil(len / charsPerLine) - 1;
+          col = len % charsPerLine || charsPerLine;
+        }
+        continue;
+      }
+      if (col + len <= charsPerLine) {
+        col += len;
+      } else {
+        lines += 1;
+        if (len <= charsPerLine) {
+          col = len;
+        } else {
+          lines += Math.ceil(len / charsPerLine) - 1;
+          col = len % charsPerLine || charsPerLine;
+        }
+      }
+    }
+    total += Math.max(1, lines);
+  }
+
+  return Math.max(1, total);
+}
+
+/** Äußere Bounding-Box inkl. Padding für Textfelder. */
+export function getTextBoxLayout(element: BoardElement): {
+  text: string;
+  fontSize: number;
+  padding: number;
+  lineHeight: number;
+  contentWidth: number;
+  contentHeight: number;
+  outerWidth: number;
+  outerHeight: number;
+} {
+  const text = element.text?.length ? element.text : DEFAULT_TEXT_BOX_TEXT;
+  const fontSize = getTextBoxFontSize(element);
+  const padding = DEFAULT_TEXT_BOX_PADDING;
+  const contentWidth = Math.max(40, getTextBoxWidth(element));
+  const lineHeight = 1.35;
+  const lines = estimateTextBoxLineCount(text, contentWidth, fontSize);
+  const contentHeight = Math.max(fontSize * lineHeight, lines * fontSize * lineHeight);
+
+  return {
+    text,
+    fontSize,
+    padding,
+    lineHeight,
+    contentWidth,
+    contentHeight,
+    outerWidth: contentWidth + padding * 2,
+    outerHeight: contentHeight + padding * 2,
+  };
+}
+
 export function createDefaultTextBoxElement(
   id: string,
   x: number,

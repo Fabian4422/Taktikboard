@@ -398,7 +398,13 @@ export function FieldCanvas({
                 clipWidth={rotated.w}
                 clipHeight={rotated.h}
               >
-                {elements.map((el) => (
+                {[...elements]
+                  .sort((a, b) => {
+                    const aZ = a.type === "text-box" ? 1 : 0;
+                    const bZ = b.type === "text-box" ? 1 : 0;
+                    return aZ - bZ;
+                  })
+                  .map((el) => (
                   <BoardElementShape
                     key={el.id}
                     element={el}

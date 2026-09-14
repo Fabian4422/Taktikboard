@@ -79,6 +79,12 @@ export function ObjectInspector({
   const [xDraft, setXDraft] = useState(String(Math.round(element.x)));
   const [yDraft, setYDraft] = useState(String(Math.round(element.y)));
   const [textDraft, setTextDraft] = useState(element.text ?? DEFAULT_TEXT_BOX_TEXT);
+  const [durationDraft, setDurationDraft] = useState(() =>
+    String(Number(getTextBoxDisplayDuration(element).toFixed(1))),
+  );
+  const [fontSizeDraft, setFontSizeDraft] = useState(() =>
+    String(getTextBoxFontSize(element)),
+  );
 
   useEffect(() => {
     setXDraft(String(Math.round(element.x)));
@@ -89,8 +95,16 @@ export function ObjectInspector({
     setTextDraft(element.text ?? DEFAULT_TEXT_BOX_TEXT);
   }, [element.id, element.text]);
 
+  useEffect(() => {
+    setDurationDraft(String(Number(getTextBoxDisplayDuration(element).toFixed(1))));
+  }, [element.id, element.duration]);
+
+  useEffect(() => {
+    setFontSizeDraft(String(getTextBoxFontSize(element)));
+  }, [element.id, element.fontSize]);
+
   const parseNumber = (value: string, fallback: number) => {
-    const parsed = Number.parseFloat(value);
+    const parsed = Number.parseFloat(value.replace(",", "."));
     return Number.isFinite(parsed) ? parsed : fallback;
   };
 
@@ -105,6 +119,38 @@ export function ObjectInspector({
     onUpdate({ [axis]: next });
     if (axis === "x") setXDraft(String(Math.round(next)));
     else setYDraft(String(Math.round(next)));
+  };
+
+  const commitDuration = (raw: string) => {
+    if (raw.trim() === "") {
+      onUpdate({ duration: DEFAULT_KEYFRAME_DURATION_S });
+      setDurationDraft(String(DEFAULT_KEYFRAME_DURATION_S));
+      return;
+    }
+    const parsed = Number.parseFloat(raw.replace(",", "."));
+    if (!Number.isFinite(parsed)) {
+      setDurationDraft(String(Number(getTextBoxDisplayDuration(element).toFixed(1))));
+      return;
+    }
+    const next = clampKeyframeDuration(parsed);
+    onUpdate({ duration: next });
+    setDurationDraft(String(Number(next.toFixed(1))));
+  };
+
+  const commitFontSize = (raw: string) => {
+    if (raw.trim() === "") {
+      onUpdate({ fontSize: DEFAULT_TEXT_BOX_FONT_SIZE });
+      setFontSizeDraft(String(DEFAULT_TEXT_BOX_FONT_SIZE));
+      return;
+    }
+    const parsed = Number.parseFloat(raw.replace(",", "."));
+    if (!Number.isFinite(parsed)) {
+      setFontSizeDraft(String(getTextBoxFontSize(element)));
+      return;
+    }
+    const next = Math.max(10, Math.min(48, Math.round(parsed)));
+    onUpdate({ fontSize: next });
+    setFontSizeDraft(String(next));
   };
 
   const fontSize = getTextBoxFontSize(element);
@@ -203,15 +249,14 @@ export function ObjectInspector({
               className="w-full accent-sky-400"
             />
             <input
-              type="number"
-              min={10}
-              max={48}
-              value={fontSize}
-              onChange={(e) =>
-                onUpdate({
-                  fontSize: Math.max(10, Math.min(48, parseNumber(e.target.value, fontSize))),
-                })
-              }
+              type="text"
+              inputMode="decimal"
+              value={fontSizeDraft}
+              onChange={(e) => setFontSizeDraft(e.target.value)}
+              onBlur={() => commitFontSize(fontSizeDraft)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") e.currentTarget.blur();
+              }}
               className="rounded-lg border border-slate-600 bg-slate-950 px-2 py-1.5 text-sm text-white"
             />
           </label>
@@ -299,23 +344,23 @@ export function ObjectInspector({
               max={MAX_KEYFRAME_DURATION_S}
               step={0.1}
               value={displayDuration}
-              onChange={(e) =>
-                onUpdate({
-                  duration: clampKeyframeDuration(parseNumber(e.target.value, DEFAULT_KEYFRAME_DURATION_S)),
-                })
-              }
+              onChange={(e) => {
+                const next = clampKeyframeDuration(
+                  parseNumber(e.target.value, DEFAULT_KEYFRAME_DURATION_S),
+                );
+                onUpdate({ duration: next });
+                setDurationDraft(String(Number(next.toFixed(1))));
+              }}
               className="w-full accent-sky-400"
             />
             <input
-              type="number"
-              min={MIN_KEYFRAME_DURATION_S}
-              max={MAX_KEYFRAME_DURATION_S}
-              step={0.1}
-              value={Number(displayDuration.toFixed(1))}
-              onChange={(e) => {
-                const raw = Number.parseFloat(e.target.value);
-                if (!Number.isFinite(raw)) return;
-                onUpdate({ duration: clampKeyframeDuration(raw) });
+              type="text"
+              inputMode="decimal"
+              value={durationDraft}
+              onChange={(e) => setDurationDraft(e.target.value)}
+              onBlur={() => commitDuration(durationDraft)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") e.currentTarget.blur();
               }}
               className="rounded-lg border border-slate-600 bg-slate-950 px-2 py-1.5 text-sm text-white"
             />

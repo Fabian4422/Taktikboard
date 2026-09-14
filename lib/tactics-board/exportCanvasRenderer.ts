@@ -1,7 +1,5 @@
 import type { BoardElement, FieldRotation, FieldView } from "./types";
 import {
-  DEFAULT_TEXT_BOX_PADDING,
-  DEFAULT_TEXT_BOX_TEXT,
   DISPLAY_ASPECT_RATIO,
   FIELD_HEIGHT,
   FIELD_WIDTH,
@@ -13,8 +11,7 @@ import {
   getTextBoxBorderRadius,
   getTextBoxColor,
   getTextBoxFontFamily,
-  getTextBoxFontSize,
-  getTextBoxWidth,
+  getTextBoxLayout,
 } from "./types";
 import {
   getEffectiveRotation,
@@ -451,33 +448,25 @@ function drawMarkerElement(
       drawBall(ctx);
       break;
     case "text-box": {
-      const text = element.text || DEFAULT_TEXT_BOX_TEXT;
-      const fontSize = getTextBoxFontSize(element);
+      const layout = getTextBoxLayout(element);
       const fontFamily = getTextBoxFontFamily(element);
       const textColor = getTextBoxColor(element);
       const bgColor = getTextBoxBgColor(element);
       const bgStyle = getTextBoxBgStyle(element);
       const bgOpacity = getTextBoxBackgroundOpacity(bgStyle);
       const borderRadius = getTextBoxBorderRadius(element);
-      const boxWidth = getTextBoxWidth(element);
-      const padding = DEFAULT_TEXT_BOX_PADDING;
-      const lineCount = Math.max(1, text.split("\n").length);
-      const approxLines = Math.max(
-        lineCount,
-        Math.ceil(text.length / Math.max(8, Math.floor((boxWidth - padding * 2) / (fontSize * 0.55)))),
-      );
-      const boxHeight = Math.max(fontSize + padding * 2, approxLines * fontSize * 1.3 + padding * 2);
+      const { text, fontSize, padding, lineHeight, contentWidth, outerWidth, outerHeight } = layout;
 
       if (bgOpacity > 0) {
         ctx.save();
         ctx.globalAlpha = bgOpacity;
         ctx.fillStyle = bgColor;
-        roundRect(ctx, -padding, -padding, boxWidth + padding, boxHeight, borderRadius);
+        roundRect(ctx, -padding, -padding, outerWidth, outerHeight, borderRadius);
         ctx.fill();
         ctx.restore();
         ctx.strokeStyle = "rgba(148,163,184,0.35)";
         ctx.lineWidth = 1;
-        roundRect(ctx, -padding, -padding, boxWidth + padding, boxHeight, borderRadius);
+        roundRect(ctx, -padding, -padding, outerWidth, outerHeight, borderRadius);
         ctx.stroke();
       }
 
@@ -485,7 +474,7 @@ function drawMarkerElement(
       ctx.font = `${fontSize}px ${fontFamily}, sans-serif`;
       ctx.textAlign = "left";
       ctx.textBaseline = "top";
-      wrapFillText(ctx, text, 0, 0, boxWidth, fontSize * 1.3);
+      wrapFillText(ctx, text, 0, 0, contentWidth, fontSize * lineHeight);
       break;
     }
     default:
@@ -614,7 +603,11 @@ export function drawExportFrame(
   ctx.rect(0, 0, rotated.w, rotated.h);
   ctx.clip();
 
-  for (const el of elements) {
+  for (const el of [...elements].sort((a, b) => {
+    const aZ = a.type === "text-box" ? 1 : 0;
+    const bZ = b.type === "text-box" ? 1 : 0;
+    return aZ - bZ;
+  })) {
     if (el.points && el.points.length >= 4) {
       drawLineElement(ctx, el);
     } else {

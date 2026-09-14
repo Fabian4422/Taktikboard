@@ -5,8 +5,6 @@ import { Circle, Group, Line, Rect, Text, Transformer } from "react-konva";
 import type Konva from "konva";
 import type { BoardElement } from "@/lib/tactics-board/types";
 import {
-  DEFAULT_TEXT_BOX_PADDING,
-  DEFAULT_TEXT_BOX_TEXT,
   getElementScale,
   getTextBoxBackgroundOpacity,
   getTextBoxBgColor,
@@ -14,8 +12,7 @@ import {
   getTextBoxBorderRadius,
   getTextBoxColor,
   getTextBoxFontFamily,
-  getTextBoxFontSize,
-  getTextBoxWidth,
+  getTextBoxLayout,
   isRotatable,
 } from "@/lib/tactics-board/types";
 import {
@@ -256,6 +253,8 @@ export function BoardElementShape({
     rotation: element.rotation ?? 0,
     scaleX: elementScale,
     scaleY: elementScale,
+    // Textfelder über anderen Objekten zeichnen
+    zIndex: element.type === "text-box" ? 20 : undefined,
     draggable,
     onDragEnd: (e: { target: { x: () => number; y: () => number } }) => {
       clearHoldTimer();
@@ -376,22 +375,14 @@ export function BoardElementShape({
       );
 
     case "text-box": {
-      const text = element.text || DEFAULT_TEXT_BOX_TEXT;
-      const fontSize = getTextBoxFontSize(element);
+      const layout = getTextBoxLayout(element);
       const fontFamily = getTextBoxFontFamily(element);
       const textColor = getTextBoxColor(element);
       const bgColor = getTextBoxBgColor(element);
       const bgStyle = getTextBoxBgStyle(element);
       const bgOpacity = getTextBoxBackgroundOpacity(bgStyle);
       const borderRadius = getTextBoxBorderRadius(element);
-      const boxWidth = getTextBoxWidth(element);
-      const padding = DEFAULT_TEXT_BOX_PADDING;
-      const lineCount = Math.max(1, text.split("\n").length);
-      const approxLines = Math.max(
-        lineCount,
-        Math.ceil(text.length / Math.max(8, Math.floor((boxWidth - padding * 2) / (fontSize * 0.55)))),
-      );
-      const boxHeight = Math.max(fontSize + padding * 2, approxLines * fontSize * 1.3 + padding * 2);
+      const { text, fontSize, padding, lineHeight, contentWidth, outerWidth, outerHeight } = layout;
 
       return (
         <Group {...commonGroupProps}>
@@ -399,8 +390,8 @@ export function BoardElementShape({
             <Rect
               x={-padding}
               y={-padding}
-              width={boxWidth + padding}
-              height={boxHeight}
+              width={outerWidth}
+              height={outerHeight}
               fill={bgColor}
               opacity={bgOpacity}
               cornerRadius={borderRadius}
@@ -412,8 +403,8 @@ export function BoardElementShape({
             <Rect
               x={-padding}
               y={-padding}
-              width={boxWidth + padding}
-              height={boxHeight}
+              width={outerWidth}
+              height={outerHeight}
               fill="transparent"
               stroke="#38bdf8"
               strokeWidth={2}
@@ -426,16 +417,19 @@ export function BoardElementShape({
             fontSize={fontSize}
             fontFamily={fontFamily}
             fill={textColor}
-            width={boxWidth}
+            width={contentWidth}
+            wrap="word"
+            lineHeight={lineHeight}
             align="left"
+            verticalAlign="top"
             listening={false}
           />
-          {/* Hit-area for easier selection/drag */}
+          {/* Hit-area inkl. Padding für Auswahl/Drag */}
           <Rect
             x={-padding}
             y={-padding}
-            width={boxWidth + padding}
-            height={boxHeight}
+            width={outerWidth}
+            height={outerHeight}
             fill="rgba(0,0,0,0.01)"
           />
         </Group>
