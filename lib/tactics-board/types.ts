@@ -490,12 +490,22 @@ const STILL_TRAVEL_EPS = 2;
 const STILL_ROTATION_EPS = 2;
 
 export interface SegmentTiming {
+  /** Gesamtdauer = Hold (Pause-Frame) + Bewegung zum nächsten Schritt */
   durationMs: number;
+  /** Standzeit am Start-Schritt (Textfeld-Anzeigedauer); Elemente eingefroren */
+  holdMs: number;
+  /** Dauer der Interpolation zum Folge-Schritt (0 bei reinem Standbild) */
+  moveMs: number;
+}
+
+function clampSegmentMs(ms: number): number {
+  return Math.min(MAX_SEGMENT_MS, Math.max(MIN_SEGMENT_MS, ms));
 }
 
 /**
- * Standbild/Text-Szene: Textfeld-Anzeigedauer.
- * Bewegungs-Szene: Auto-Dauer aus Distanz/Rotation (Gesamt-Tempo steuert Playback-Rate).
+ * Segment = optionaler Text-/Standbild-Hold am Start-Schritt, danach Bewegung.
+ * Der nächste Schritt startet erst, wenn Hold + Bewegung vollständig abgelaufen sind.
+ * Nachfolgende Keyframes verschieben sich mathematisch um die Hold-Differenz.
  */
 export function getSegmentTiming(from: Keyframe, to: Keyframe): SegmentTiming {
   const travel = maxTravelDistance(from.elements, to.elements);
@@ -503,17 +513,26 @@ export function getSegmentTiming(from: Keyframe, to: Keyframe): SegmentTiming {
   const isStill = travel < STILL_TRAVEL_EPS && rotate < STILL_ROTATION_EPS;
   const textHoldS = getSceneTextHoldDurationS(from.elements);
 
-  if (isStill && textHoldS != null) {
-    const durationMs = Math.min(MAX_SEGMENT_MS, Math.max(MIN_SEGMENT_MS, textHoldS * 1000));
-    return { durationMs };
+  const holdMs =
+    textHoldS != null ? clampSegmentMs(textHoldS * 1000) : 0;
+
+  let moveMs = 0;
+  if (!isStill) {
+    const speedFactor = KEYFRAME_SPEED_MULTIPLIER[getKeyframeSpeed(from)];
+    const travelMs = (travel / REFERENCE_SPEED_UNITS_PER_S) * 1000;
+    const rotateMs = (rotate / 90) * ROTATE_MS_PER_90;
+    const autoMs = Math.max(travelMs, rotateMs, MIN_SEGMENT_MS);
+    moveMs = clampSegmentMs(autoMs * speedFactor);
+  } else if (holdMs === 0) {
+    // Reines Standbild ohne Textfeld: kurzer Mindest-Übergang
+    moveMs = MIN_SEGMENT_MS;
   }
 
-  const speedFactor = KEYFRAME_SPEED_MULTIPLIER[getKeyframeSpeed(from)];
-  const travelMs = (travel / REFERENCE_SPEED_UNITS_PER_S) * 1000;
-  const rotateMs = (rotate / 90) * ROTATE_MS_PER_90;
-  const autoMs = Math.max(travelMs, rotateMs, MIN_SEGMENT_MS);
-  const durationMs = Math.min(MAX_SEGMENT_MS, Math.max(MIN_SEGMENT_MS, autoMs * speedFactor));
-  return { durationMs };
+  return {
+    holdMs,
+    moveMs,
+    durationMs: holdMs + moveMs,
+  };
 }
 
 export function getPlaybackPlan(keyframes: Keyframe[]): { timings: SegmentTiming[]; totalMs: number } {
@@ -528,8 +547,8 @@ export function getPlaybackPlan(keyframes: Keyframe[]): { timings: SegmentTiming
 }
 
 /**
- * Interpolation mit gemeinsamer Schritt-Zeit: alle Objekte starten und kommen
- * gleichzeitig an (t identisch für jedes Element).
+ * Hold-Phase: Pause-Frame (alle Elemente eingefroren am Start-Schritt).
+ * Move-Phase: gemeinsame Interpolation; alle Objekte starten/ankommen gleichzeitig.
  */
 export function interpolateElementsTimed(
   from: BoardElement[],
@@ -537,9 +556,22 @@ export function interpolateElementsTimed(
   elapsedMs: number,
   timing: SegmentTiming,
 ): InterpolatedElement[] {
+  const holdMs = timing.holdMs ?? 0;
+  const moveMs = timing.moveMs ?? Math.max(0, timing.durationMs - holdMs);
+
+  // Pause-Frame: Spieler/Bälle/Elemente eingefroren, Textfeld bleibt sichtbar
+  if (elapsedMs < holdMs || moveMs <= 0) {
+    return from.map((el) => ({
+      ...el,
+      points: el.points ? [...el.points] : undefined,
+      opacity: 1,
+    }));
+  }
+
   const toMap = new Map(to.map((el) => [el.id, el]));
   const fromIds = new Set(from.map((el) => el.id));
-  const t = Math.min(1, Math.max(0, elapsedMs / Math.max(timing.durationMs, 1)));
+  const moveElapsed = elapsedMs - holdMs;
+  const t = Math.min(1, Math.max(0, moveElapsed / Math.max(moveMs, 1)));
 
   const result: InterpolatedElement[] = from.map((fromEl) => {
     const toEl = toMap.get(fromEl.id);

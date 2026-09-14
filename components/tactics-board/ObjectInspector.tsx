@@ -320,7 +320,7 @@ export function ObjectInspector({
               className="rounded-lg border border-slate-600 bg-slate-950 px-2 py-1.5 text-sm text-white"
             />
             <p className="text-[11px] text-slate-500">
-              Steuert die Standzeit dieses Schritts in Vorschau und Export (bei Standbild ohne Bewegung).
+              Standzeit dieses Schritts: Spieler/Bälle bleiben eingefroren, danach startet erst der Übergang zum nächsten Schritt (Vorschau &amp; Export).
             </p>
           </label>
 

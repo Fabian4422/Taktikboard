@@ -13,6 +13,7 @@ import {
   saveTacticsBoard,
   loadTacticsBoard,
   isSupabaseConfigured,
+  toSaveUserMessage,
 } from "@/lib/tactics-board/supabase";
 import { exportTacticsAnimation, type ExportFormat } from "@/lib/tactics-board/exportAnimation";
 import { FIELD_HEIGHT, FIELD_WIDTH, createEmptyKeyframe } from "@/lib/tactics-board/types";
@@ -163,26 +164,38 @@ export function TacticsBoard({ exerciseId, initialName }: TacticsBoardProps) {
     setSaveStatus("Speichern…");
     setLoadError(null);
 
+    const showSaveError = (message: string, cause?: unknown) => {
+      console.error("[TacticsBoard] Speichern fehlgeschlagen:", message, cause ?? "");
+      setSaveStatus(message);
+      setToastWarning(message);
+      window.setTimeout(() => setToastWarning(null), 8000);
+    };
+
     try {
       if (!isSupabaseConfigured()) {
-        const message = "Fehler beim Speichern in Supabase";
-        setSaveStatus(message);
-        setToastWarning(message);
-        window.setTimeout(() => setToastWarning(null), 4500);
+        showSaveError(
+          "Supabase ist nicht konfiguriert (NEXT_PUBLIC_SUPABASE_URL / ANON_KEY fehlen).",
+        );
         return;
       }
 
-      const result = await saveTacticsBoard(
-        {
-          ...board.document,
-          name: boardName,
-          exerciseId,
-          fieldView: board.fieldView,
-          fieldRotation: board.fieldRotation,
-          coordSpace: "viewport",
-        },
-        { exerciseId, name: boardName },
-      );
+      let result;
+      try {
+        result = await saveTacticsBoard(
+          {
+            ...board.document,
+            name: boardName,
+            exerciseId,
+            fieldView: board.fieldView,
+            fieldRotation: board.fieldRotation,
+            coordSpace: "viewport",
+          },
+          { exerciseId, name: boardName },
+        );
+      } catch (saveError) {
+        showSaveError(toSaveUserMessage(saveError), saveError);
+        return;
+      }
 
       console.log("[TacticsBoard] save result", result);
 
@@ -200,19 +213,9 @@ export function TacticsBoard({ exerciseId, initialName }: TacticsBoardProps) {
         return;
       }
 
-      const message = result.error?.includes("Failed to fetch")
-        ? "Fehler beim Speichern in Supabase"
-        : (result.error ?? "Fehler beim Speichern in Supabase");
-      console.error("[TacticsBoard] Speichern fehlgeschlagen:", message);
-      setSaveStatus(message);
-      setToastWarning(message);
-      window.setTimeout(() => setToastWarning(null), 4500);
+      showSaveError(result.error ?? "Fehler beim Speichern in Supabase", result);
     } catch (error) {
-      const message = "Fehler beim Speichern in Supabase";
-      console.error("[TacticsBoard] Speichern Exception:", error);
-      setSaveStatus(message);
-      setToastWarning(message);
-      window.setTimeout(() => setToastWarning(null), 4500);
+      showSaveError(toSaveUserMessage(error), error);
     }
   }, [board, boardName, exerciseId, router]);
 
@@ -362,7 +365,7 @@ export function TacticsBoard({ exerciseId, initialName }: TacticsBoardProps) {
     <div className="relative mx-auto flex max-w-7xl flex-col gap-6 p-4 md:p-6">
       {toastWarning && (
         <div
-          className="fixed right-4 top-4 z-[60] max-w-sm rounded-lg border border-amber-500/40 bg-slate-900 px-4 py-3 text-sm text-amber-100 shadow-lg"
+          className="fixed right-4 top-4 z-[60] max-w-md break-words rounded-lg border border-amber-500/40 bg-slate-900 px-4 py-3 text-sm text-amber-100 shadow-lg"
           role="status"
           aria-live="polite"
         >

@@ -52,8 +52,12 @@ export interface SaveTacticsBoardOptions {
 
 export type SaveTacticsBoardResult = SaveTacticResult;
 
+/**
+ * Serialisiert Board-Daten für JSONB: entfernt undefined, behält Textfeld-`duration`
+ * und alle Elementfelder ohne Schema-Abweichung (eine JSONB-Spalte).
+ */
 function documentToBoardData(document: TacticsBoardDocument): BoardData {
-  return {
+  const raw: BoardData = {
     keyframes: document.keyframes,
     fieldWidth: document.fieldWidth,
     fieldHeight: document.fieldHeight,
@@ -61,6 +65,14 @@ function documentToBoardData(document: TacticsBoardDocument): BoardData {
     fieldRotation: document.fieldRotation,
     coordSpace: document.coordSpace ?? "viewport",
   };
+  try {
+    return JSON.parse(JSON.stringify(raw)) as BoardData;
+  } catch (error) {
+    console.error("[tactics/supabase] board_data JSON-Serialisierung fehlgeschlagen", error);
+    throw new Error(
+      `board_data nicht serialisierbar: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
 }
 
 function boardDataToDocument(
@@ -100,16 +112,20 @@ function extensionFromFilename(filename: string, mimeType: string): string {
   return "mp4";
 }
 
-/** Formatiert Supabase/PostgREST-Fehler inkl. Code/Hint für UI + Konsole. */
-function formatSupabaseError(
-  error: { message?: string; code?: string; details?: string; hint?: string } | null | undefined,
+type SupabaseLikeError = {
+  message?: string;
+  code?: string;
+  details?: string;
+  hint?: string;
+};
+
+/** Formatiert Supabase/PostgREST-Fehler inkl. message/details/hint für Toast + Konsole. */
+export function formatSupabaseError(
+  error: SupabaseLikeError | null | undefined,
   fallback: string,
 ): string {
   if (!error) return fallback;
-  const raw = error.message || fallback;
-  if (/failed to fetch|networkerror|load failed|fetch/i.test(raw)) {
-    return "Fehler beim Speichern in Supabase";
-  }
+  const raw = (error.message || "").trim() || fallback;
   const parts = [
     raw,
     error.code ? `code=${error.code}` : null,
@@ -119,12 +135,44 @@ function formatSupabaseError(
   return parts.join(" | ");
 }
 
-function toSaveUserMessage(error: unknown, fallback = "Fehler beim Speichern in Supabase"): string {
-  const raw = error instanceof Error ? error.message : String(error ?? "");
-  if (!raw || /failed to fetch|networkerror|load failed|typeerror/i.test(raw)) {
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+/** Extrahiert lesbare Speichern-Fehler (Error, PostgREST, verschachtelt). */
+export function toSaveUserMessage(
+  error: unknown,
+  fallback = "Fehler beim Speichern in Supabase",
+): string {
+  if (error == null || error === "") return fallback;
+
+  if (typeof error === "string") {
+    return error.trim() || fallback;
+  }
+
+  if (error instanceof Error) {
+    const anyErr = error as Error & SupabaseLikeError;
+    if (anyErr.details || anyErr.hint || anyErr.code) {
+      return formatSupabaseError(anyErr, anyErr.message || fallback);
+    }
+    return anyErr.message?.trim() || fallback;
+  }
+
+  if (isPlainObject(error)) {
+    const msg = typeof error.message === "string" ? error.message : "";
+    const details = typeof error.details === "string" ? error.details : undefined;
+    const hint = typeof error.hint === "string" ? error.hint : undefined;
+    const code = typeof error.code === "string" ? error.code : undefined;
+    if (msg || details || hint || code) {
+      return formatSupabaseError({ message: msg || fallback, details, hint, code }, fallback);
+    }
+  }
+
+  try {
+    return String(error);
+  } catch {
     return fallback;
   }
-  return raw;
 }
 
 function logSupabase(label: string, payload: Record<string, unknown>) {
@@ -342,7 +390,8 @@ export async function updateTactic(params: {
 
 /**
  * Speichert oder aktualisiert ein Taktikboard-Dokument in Supabase.
- * Existiert bereits eine ID (im Dokument oder als exerciseId), wird aktualisiert.
+ * Update nur bei bekannter Dokument-ID (nicht bei toter URL-exerciseId nach Lade-Fehler).
+ * board_data ist JSONB — Schrittdauern/Textfelder liegen in keyframes[].elements.
  */
 export async function saveTacticsBoard(
   document: TacticsBoardDocument,
@@ -352,23 +401,69 @@ export async function saveTacticsBoard(
     if (!isSupabaseConfigured() || !getSupabaseClient()) {
       return {
         success: false,
-        error: "Fehler beim Speichern in Supabase",
+        error:
+          "Supabase ist nicht konfiguriert (NEXT_PUBLIC_SUPABASE_URL / ANON_KEY fehlen).",
       };
     }
 
     const title = (options.name ?? document.name).trim();
-    const boardData = documentToBoardData(document);
-    const existingId = document.id ?? options.exerciseId;
+    if (!title) {
+      return { success: false, error: "Bitte einen Titel für die Übung eingeben." };
+    }
+
+    let boardData: BoardData;
+    try {
+      boardData = documentToBoardData(document);
+    } catch (serializeError) {
+      return { success: false, error: toSaveUserMessage(serializeError) };
+    }
+
+    // Nur document.id = Zeile existiert wirklich. options.exerciseId allein
+    // (z. B. nach fehlgeschlagenem Load) würde UPDATE gegen eine tote ID feuern.
+    const existingId = document.id?.trim() || undefined;
+
+    const textBoxCount = boardData.keyframes.reduce(
+      (n, kf) => n + kf.elements.filter((el) => el.type === "text-box").length,
+      0,
+    );
+    const durationFields = boardData.keyframes.reduce(
+      (n, kf) =>
+        n +
+        kf.elements.filter(
+          (el) => el.type === "text-box" && typeof el.duration === "number",
+        ).length,
+      0,
+    );
 
     logSupabase("saveTacticsBoard", {
       title,
       existingId: existingId ?? null,
+      urlExerciseId: options.exerciseId ?? null,
       mode: existingId ? "update" : "insert",
       table: TACTICS_TABLE,
+      keyframeCount: boardData.keyframes.length,
+      textBoxCount,
+      durationFields,
+      boardDataBytes: JSON.stringify(boardData).length,
     });
 
     if (existingId) {
-      return await updateTactic({ id: existingId, title, boardData });
+      const updated = await updateTactic({ id: existingId, title, boardData });
+      if (updated.success) return updated;
+
+      // Zeile fehlt / RLS: als Neu-Anlage versuchen, damit Speichern nicht stecken bleibt
+      const looksMissing =
+        /keine sichtbare Zeile|PGRST116|0 rows|not found|does not exist/i.test(
+          updated.error ?? "",
+        );
+      if (looksMissing) {
+        logSupabase("saveTacticsBoard UPDATE→INSERT fallback", {
+          id: existingId,
+          reason: updated.error,
+        });
+        return await saveTactic({ title, boardData });
+      }
+      return updated;
     }
 
     return await saveTactic({ title, boardData });
