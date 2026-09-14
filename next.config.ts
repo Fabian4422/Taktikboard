@@ -14,6 +14,34 @@ const nextConfig: NextConfig = {
     // Browser-Build von Konva nutzen (main zeigt auf index-node.js mit canvas-Abhängigkeit)
     if (!isServer) {
       config.resolve.mainFields = ["browser", "module", "main"];
+      // Weniger async Chunks: Module möglichst mit dem initialen Client-Bundle laden
+      // (verhindert Failed to fetch auf veraltete Chunk-URLs in der PWA)
+      config.optimization = {
+        ...config.optimization,
+        splitChunks: {
+          chunks: "all",
+          maxAsyncRequests: 1,
+          cacheGroups: {
+            default: false,
+            vendors: false,
+            framework: {
+              name: "framework",
+              test: new RegExp(String.raw`[\\/]node_modules[\\/](react|react-dom|scheduler)[\\/]`),
+              chunks: "all",
+              priority: 40,
+              enforce: true,
+            },
+            lib: {
+              name: "lib",
+              test: new RegExp(String.raw`[\\/]node_modules[\\/]`),
+              chunks: "all",
+              priority: 30,
+              minChunks: 1,
+              reuseExistingChunk: true,
+            },
+          },
+        },
+      };
     }
 
     config.resolve.alias = {
@@ -50,13 +78,19 @@ function withOptionalPWA(config: NextConfig): NextConfig {
           handler: "NetworkOnly" as const,
         },
         {
+          // JS-Chunks nie aus dem SW-Cache — sonst Failed to fetch nach Deployments
+          urlPattern: /\/_next\/static\/chunks\/.*/i,
+          handler: "NetworkOnly" as const,
+        },
+        {
           urlPattern: /\/_next\/static\/.*/i,
-          handler: "CacheFirst" as const,
+          handler: "NetworkFirst" as const,
           options: {
             cacheName: "next-static",
+            networkTimeoutSeconds: 5,
             expiration: {
-              maxEntries: 128,
-              maxAgeSeconds: 60 * 60 * 24,
+              maxEntries: 64,
+              maxAgeSeconds: 60 * 60,
             },
           },
         },

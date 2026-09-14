@@ -3,7 +3,6 @@ import { FIELD_HEIGHT, FIELD_WIDTH } from "./types";
 import { migrateTacticsDocument } from "./fieldLayout";
 import { getSupabaseClient, isSupabaseConfigured, getSupabaseConfigError } from "@/lib/supabaseClient";
 import { createId } from "@/lib/uuid";
-import { isChunkLoadError, recoverFromChunkLoadError } from "@/lib/chunkLoadRecovery";
 
 export { isSupabaseConfigured, getSupabaseConfigError };
 
@@ -156,11 +155,6 @@ export function toSaveUserMessage(
   fallback = "Fehler beim Speichern in Supabase",
 ): string {
   if (error == null || error === "") return fallback;
-
-  if (isChunkLoadError(error)) {
-    recoverFromChunkLoadError(error);
-    return "Fehler beim Speichern: App-Dateien veraltet (Chunk-Load). Seite wird neu geladen…";
-  }
 
   if (typeof error === "string") {
     const raw = error.trim() || fallback;
@@ -584,10 +578,22 @@ export async function listTactics(): Promise<{ items: TacticSummary[]; error?: s
 
   try {
     // Spalten ohne updated_at (Schema in 002_tactics.sql)
-    const { data, error } = await supabase
-      .from(TACTICS_TABLE)
-      .select("id, title, created_at, video_url")
-      .order("created_at", { ascending: false });
+    let data: TacticSummary[] | null = null;
+    let error: { message?: string; code?: string; details?: string; hint?: string } | null = null;
+    try {
+      const result = await supabase
+        .from(TACTICS_TABLE)
+        .select("id, title, created_at, video_url")
+        .order("created_at", { ascending: false });
+      data = result.data as TacticSummary[] | null;
+      error = result.error;
+    } catch (fetchError) {
+      console.error("[tactics/supabase] LIST fetch exception", fetchError);
+      return {
+        items: [],
+        error: `Übungen konnten nicht geladen werden: ${toSaveUserMessage(fetchError, "Failed to fetch")}`,
+      };
+    }
 
     const rowCount = data?.length ?? 0;
     console.log(
@@ -598,7 +604,7 @@ export async function listTactics(): Promise<{ items: TacticSummary[]; error?: s
     if (error) {
       const message = formatSupabaseError(error, "Bibliothek konnte nicht geladen werden.");
       console.error("[tactics/supabase] LIST error", error);
-      return { items: [], error: message };
+      return { items: [], error: `Übungen konnten nicht geladen werden: ${message}` };
     }
 
     if (rowCount === 0) {
@@ -612,7 +618,7 @@ export async function listTactics(): Promise<{ items: TacticSummary[]; error?: s
     console.error("[tactics/supabase] LIST exception", error);
     return {
       items: [],
-      error: "Bibliothek konnte nicht geladen werden.",
+      error: `Übungen konnten nicht geladen werden: ${toSaveUserMessage(error, "Unbekannter Fehler")}`,
     };
   }
 }

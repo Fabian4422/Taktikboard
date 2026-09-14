@@ -1,4 +1,10 @@
 import { TacticsBoard } from "@/components/TacticsBoard";
+// Statisch mit der Seite bundlen — kein lazy/dynamic Nachladen zur Laufzeit
+import { ExerciseLibraryModal } from "@/components/tactics-board/ExerciseLibraryModal";
+import { FieldCanvas } from "@/components/tactics-board/FieldCanvas";
+
+void ExerciseLibraryModal;
+void FieldCanvas;
 
 interface PageProps {
   searchParams: Promise<{ exerciseId?: string; name?: string }>;

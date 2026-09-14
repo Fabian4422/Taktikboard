@@ -40,7 +40,7 @@ export function ExerciseLibraryModal({
 
   const refresh = useCallback(async () => {
     if (!isSupabaseConfigured()) {
-      setError("Supabase ist nicht konfiguriert.");
+      setError("Übungen konnten nicht geladen werden: Supabase ist nicht konfiguriert.");
       setEmptyHint(null);
       setItems([]);
       return;
@@ -49,20 +49,37 @@ export function ExerciseLibraryModal({
     setLoading(true);
     setError(null);
     setEmptyHint(null);
-    const { items: next, error: listError } = await listTactics();
-    console.log(
-      `[ExerciseLibrary] ${next.length} Zeile(n) aus der Datenbank geladen` +
-        (listError ? ` (Fehler: ${listError})` : ""),
-    );
-    setItems(next);
-    if (listError) {
-      setError(listError);
-    } else if (next.length === 0) {
-      setEmptyHint(
-        "0 Zeilen von Supabase. Wenn Speichern „ok“ wirkte, fehlen oft RLS-Policies (SELECT/INSERT für Role anon) auf Tabelle „tactics“. SQL: supabase/migrations/002_tactics.sql und 004_tactics_anon_rls.sql im Supabase SQL Editor ausführen.",
+
+    try {
+      const { items: next, error: listError } = await listTactics();
+      console.log(
+        `[ExerciseLibrary] ${next.length} Zeile(n) aus der Datenbank geladen` +
+          (listError ? ` (Fehler: ${listError})` : ""),
       );
+      setItems(next);
+      if (listError) {
+        setError(`Übungen konnten nicht geladen werden: ${listError}`);
+      } else if (next.length === 0) {
+        setEmptyHint(
+          "0 Zeilen von Supabase. Wenn Speichern „ok“ wirkte, fehlen oft RLS-Policies (SELECT/INSERT für Role anon) auf Tabelle „tactics“. SQL: supabase/migrations/002_tactics.sql und 004_tactics_anon_rls.sql im Supabase SQL Editor ausführen.",
+        );
+      }
+    } catch (err) {
+      const detail =
+        err instanceof Error
+          ? err.message
+          : typeof err === "object" &&
+              err !== null &&
+              "message" in err &&
+              typeof (err as { message: unknown }).message === "string"
+            ? (err as { message: string }).message
+            : String(err ?? "Unbekannter Fehler");
+      console.error("[ExerciseLibrary] Laden Exception:", err);
+      setItems([]);
+      setError(`Übungen konnten nicht geladen werden: ${detail}`);
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   }, []);
 
   useEffect(() => {
