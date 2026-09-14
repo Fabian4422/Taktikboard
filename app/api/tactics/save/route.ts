@@ -2,7 +2,6 @@ import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import type { TacticsBoardDocument } from "@/lib/tactics-board/types";
 import {
-  TACTICS_TABLE,
   saveTacticsBoardWithClient,
   safeErrorMessage,
   type SaveTacticsBoardOptions,
@@ -20,8 +19,8 @@ function sanitizeEnv(raw: string | undefined): string {
 }
 
 /**
- * Proxy-Speichern: Client → Next.js → Supabase (umgeht Tablet-CORS/Preflight).
- * Tabelle: public.tactics (Spalten: id, title, board_data JSONB, video_url, created_at)
+ * Proxy-Speichern: Client → Next.js → public.tactics (nie `exercises`).
+ * Spalten: id, title, board_data JSONB, video_url, created_at
  * Body: { document: TacticsBoardDocument, options?: SaveTacticsBoardOptions }
  */
 export async function POST(request: Request) {
@@ -35,7 +34,7 @@ export async function POST(request: Request) {
           success: false,
           error:
             "Supabase-URL oder Key fehlt in .env (NEXT_PUBLIC_SUPABASE_URL / NEXT_PUBLIC_SUPABASE_ANON_KEY).",
-          table: TACTICS_TABLE,
+          table: "tactics",
         },
         { status: 500 },
       );
@@ -45,7 +44,7 @@ export async function POST(request: Request) {
         {
           success: false,
           error: `Supabase-URL muss mit https:// beginnen (aktuell: "${url.slice(0, 64)}").`,
-          table: TACTICS_TABLE,
+          table: "tactics",
         },
         { status: 500 },
       );
@@ -56,7 +55,7 @@ export async function POST(request: Request) {
       body = await request.json();
     } catch {
       return NextResponse.json(
-        { success: false, error: "Ungültiger JSON-Body.", table: TACTICS_TABLE },
+        { success: false, error: "Ungültiger JSON-Body.", table: "tactics" },
         { status: 400 },
       );
     }
@@ -66,7 +65,7 @@ export async function POST(request: Request) {
         {
           success: false,
           error: "Body muss ein Objekt mit document sein.",
-          table: TACTICS_TABLE,
+          table: "tactics",
         },
         { status: 400 },
       );
@@ -82,7 +81,7 @@ export async function POST(request: Request) {
         {
           success: false,
           error: "document.keyframes fehlt oder ist ungültig.",
-          table: TACTICS_TABLE,
+          table: "tactics",
         },
         { status: 400 },
       );
@@ -92,25 +91,24 @@ export async function POST(request: Request) {
       auth: { persistSession: false, autoRefreshToken: false },
     });
 
+    // Explizit public.tactics — TACTICS_TABLE ist "tactics"
     const result = await saveTacticsBoardWithClient(supabase, document, options ?? {});
 
     if (!result.success) {
       const errorText = safeErrorMessage(
         result.error,
-        "Speichern fehlgeschlagen (keine error-Message aus saveTacticsBoardWithClient).",
+        "Speichern in public.tactics fehlgeschlagen.",
       );
       console.error("Supabase Error Details:", {
-        table: TACTICS_TABLE,
+        table: "tactics",
         error: errorText,
         result,
-        expectedColumns: ["id", "title", "board_data", "video_url", "created_at"],
       });
       return NextResponse.json(
         {
           success: false,
           error: errorText,
-          table: TACTICS_TABLE,
-          expectedColumns: ["id", "title", "board_data", "video_url", "created_at"],
+          table: "tactics",
         },
         { status: 500 },
       );
@@ -118,16 +116,16 @@ export async function POST(request: Request) {
 
     if (!result.id) {
       const errorText =
-        "Speichern meldete Erfolg, aber keine ID (oft SELECT-RLS nach INSERT).";
-      console.error("Supabase Error Details:", { table: TACTICS_TABLE, result });
+        "Speichern in public.tactics meldete Erfolg, aber keine ID (SELECT-RLS prüfen).";
+      console.error("Supabase Error Details:", { table: "tactics", result });
       return NextResponse.json(
-        { success: false, error: errorText, table: TACTICS_TABLE },
+        { success: false, error: errorText, table: "tactics" },
         { status: 500 },
       );
     }
 
     return NextResponse.json(
-      { success: true, id: result.id, videoUrl: result.videoUrl ?? null },
+      { success: true, id: result.id, videoUrl: result.videoUrl ?? null, table: "tactics" },
       { status: 200 },
     );
   } catch (error) {
@@ -135,7 +133,7 @@ export async function POST(request: Request) {
     console.error("[api/tactics/save] exception", error);
     console.error("Supabase Error Details:", error);
     return NextResponse.json(
-      { success: false, error: errorText, table: TACTICS_TABLE },
+      { success: false, error: errorText, table: "tactics" },
       { status: 500 },
     );
   }

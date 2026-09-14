@@ -59,10 +59,14 @@ export function safeErrorMessage(err: unknown, fallback = "Unbekannter Fehler"):
   return fallback;
 }
 
-/** Aktuelle Speichertabelle (nicht `tactics_boards` / `boards`). */
-export const TACTICS_TABLE = "tactics";
+/** Aktuelle Speichertabelle in Supabase — niemals `exercises`. */
+export const TACTICS_TABLE = "tactics" as const;
 export const TACTICS_VIDEO_BUCKET = "tactics-videos";
 const LOAD_FAILURE_MESSAGE = "Übung konnte nicht geladen werden";
+
+if (TACTICS_TABLE !== "tactics") {
+  throw new Error(`Ungültige Speichertabelle: ${TACTICS_TABLE} (erwartet: tactics)`);
+}
 
 export interface BoardData {
   keyframes: Keyframe[];
@@ -572,6 +576,7 @@ export async function updateTactic(
 
 /**
  * Server-/direkter Speichern-Pfad mit übergebenem Supabase-Client (API-Proxy).
+ * Schreibt ausschließlich in public.tactics via upsert (nie `exercises`).
  */
 export async function saveTacticsBoardWithClient(
   client: SupabaseClient,
@@ -591,7 +596,6 @@ export async function saveTacticsBoardWithClient(
       return { success: false, error: toSaveUserMessage(serializeError) };
     }
 
-    // board_data muss gültiges JSONB-Objekt sein (kein String)
     if (!boardData || typeof boardData !== "object" || Array.isArray(boardData)) {
       return { success: false, error: "board_data ist kein gültiges JSON-Objekt." };
     }
@@ -601,44 +605,93 @@ export async function saveTacticsBoardWithClient(
 
     const existingId = safeTrim(document.id) || undefined;
 
-    logSupabase("saveTacticsBoardWithClient", {
+    // Spalten von public.tactics: id?, title, board_data (JSONB)
+    const row: Record<string, unknown> = {
+      title,
+      board_data: boardData,
+    };
+    if (existingId) {
+      row.id = existingId;
+    }
+
+    const sizeError = assertPayloadSize(row);
+    if (sizeError) {
+      return { success: false, error: sizeError };
+    }
+
+    logSupabase("saveTacticsBoardWithClient upsert", {
       title,
       existingId: existingId ?? null,
-      mode: existingId ? "update" : "insert",
       table: TACTICS_TABLE,
-      payloadColumns: ["title", "board_data", "video_url?"],
+      payloadKeys: Object.keys(row),
       keyframeCount: boardData.keyframes.length,
       boardDataBytes: JSON.stringify(boardData).length,
     });
 
-    if (existingId) {
-      const updated = await updateTactic({ id: existingId, title, boardData }, client);
-      if (updated.success) return updated;
+    let data: { id: string } | null = null;
+    let error: SupabaseLikeError | null = null;
+    try {
+      const result = await client
+        .from(TACTICS_TABLE)
+        .upsert(row, { onConflict: "id" })
+        .select("id")
+        .single();
+      data = result.data;
+      error = result.error;
+    } catch (fetchError) {
+      console.error("[tactics/supabase] UPSERT fetch exception", fetchError);
+      return { success: false, error: networkOrExtractError(fetchError) };
+    }
 
-      const looksMissing = /keine sichtbare Zeile|PGRST116|0 rows|not found|does not exist/i.test(
-        safeErrorMessage(updated.error, ""),
-      );
-      if (looksMissing) {
-        return await saveTactic({ title, boardData }, client);
-      }
+    if (error) {
+      console.error("Supabase Error Details:", {
+        message: error.message,
+        details: error.details,
+        hint: error.hint,
+        code: error.code,
+        raw: error,
+        table: TACTICS_TABLE,
+      });
       return {
         success: false,
         error: safeErrorMessage(
-          updated.error,
-          "Aktualisieren fehlgeschlagen (keine Fehlerdetails von updateTactic).",
+          error.message || error.details || error.hint || error,
+          "Upsert in public.tactics fehlgeschlagen.",
         ),
       };
     }
 
-    const inserted = await saveTactic({ title, boardData }, client);
-    if (inserted.success) return inserted;
-    return {
-      success: false,
-      error: safeErrorMessage(
-        inserted.error,
-        "INSERT fehlgeschlagen (keine Fehlerdetails von saveTactic).",
-      ),
-    };
+    if (!data?.id) {
+      return {
+        success: false,
+        error:
+          "Upsert lieferte keine ID (oft fehlende SELECT-RLS auf public.tactics nach dem Schreiben).",
+      };
+    }
+
+    try {
+      const verify = await client
+        .from(TACTICS_TABLE)
+        .select("id, title")
+        .eq("id", data.id)
+        .maybeSingle();
+
+      if (verify.error || !verify.data) {
+        console.error("Supabase Error Details:", verify.error ?? verify);
+        return {
+          success: false,
+          error: formatSupabaseError(
+            verify.error,
+            "Übung geschrieben, aber nicht lesbar (SELECT-RLS auf public.tactics fehlt).",
+          ),
+        };
+      }
+    } catch (verifyError) {
+      console.error("[tactics/supabase] UPSERT verify exception", verifyError);
+      return { success: false, error: toSaveUserMessage(verifyError) };
+    }
+
+    return { success: true, id: data.id };
   } catch (error) {
     console.error("[tactics/supabase] saveTacticsBoardWithClient exception", error);
     console.error("Supabase Error Details:", error);
