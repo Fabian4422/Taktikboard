@@ -28,23 +28,35 @@ export function safeTrim(value: unknown): string {
 
 /** Fehlermeldung sicher als String (vermeidet `r.trim is not a function`). */
 export function safeErrorMessage(err: unknown, fallback = "Unbekannter Fehler"): string {
+  if (err == null) return fallback;
+
   if (typeof err === "string") {
     const t = err.trim();
     return t || fallback;
   }
-  if (err && typeof err === "object" && "message" in err) {
-    const m = (err as { message?: unknown }).message;
-    if (typeof m === "string" && m.trim()) return m.trim();
+
+  if (typeof err === "object") {
+    const o = err as Record<string, unknown>;
+    const parts = [
+      typeof o.message === "string" ? o.message.trim() : "",
+      typeof o.details === "string" ? o.details.trim() : "",
+      typeof o.hint === "string" && o.hint.trim() ? `hint=${o.hint.trim()}` : "",
+      typeof o.code === "string" && o.code.trim() ? `code=${o.code.trim()}` : "",
+      typeof o.error === "string" ? o.error.trim() : "",
+    ].filter(Boolean);
+    if (parts.length > 0) return parts.join(" | ");
   }
-  if (err && typeof err === "object" && "error" in err) {
-    const nested = (err as { error?: unknown }).error;
-    if (typeof nested === "string" && nested.trim()) return nested.trim();
-  }
+
   try {
-    return JSON.stringify(err);
+    const json = JSON.stringify(err);
+    if (typeof json === "string" && json.trim() && json !== "null" && json !== "{}") {
+      return json;
+    }
   } catch {
-    return fallback;
+    /* ignore */
   }
+
+  return fallback;
 }
 
 /** Aktuelle Speichertabelle (nicht `tactics_boards` / `boards`). */
@@ -99,10 +111,6 @@ type SupabaseLikeError = {
   details?: string;
   hint?: string;
 };
-
-function isPlainObject(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
 
 /**
  * Serialisiert Board-Daten ausschließlich für die JSONB-Spalte `board_data`.
@@ -189,40 +197,6 @@ function networkOrExtractError(error: unknown): string {
 
 /** Extrahiert message / details / hint oder JSON — nie eine Pauschalmeldung. */
 export function extractSupabaseErrorText(error: unknown, fallback = "Unbekannter Speichern-Fehler"): string {
-  if (error == null || error === "") return fallback;
-
-  if (typeof error === "string") {
-    return error.trim() || fallback;
-  }
-
-  if (error instanceof Error) {
-    const anyErr = error as Error & SupabaseLikeError;
-    const parts = [
-      typeof anyErr.message === "string" ? anyErr.message.trim() || null : null,
-      typeof anyErr.details === "string" ? anyErr.details : null,
-      typeof anyErr.hint === "string" ? `hint=${anyErr.hint}` : null,
-      typeof anyErr.code === "string" ? `code=${anyErr.code}` : null,
-    ].filter(Boolean);
-    if (parts.length > 0) return parts.join(" | ");
-  }
-
-  if (isPlainObject(error)) {
-    const message = typeof error.message === "string" ? error.message.trim() : "";
-    const details = typeof error.details === "string" ? error.details.trim() : "";
-    const hint = typeof error.hint === "string" ? error.hint.trim() : "";
-    const code = typeof error.code === "string" ? error.code.trim() : "";
-    if (message || details || hint || code) {
-      return [message || null, details || null, hint ? `hint=${hint}` : null, code ? `code=${code}` : null]
-        .filter(Boolean)
-        .join(" | ");
-    }
-    try {
-      return JSON.stringify(error);
-    } catch {
-      return fallback;
-    }
-  }
-
   return safeErrorMessage(error, fallback);
 }
 
@@ -409,12 +383,28 @@ export async function saveTactic(
     logSupabase("INSERT result", { data, error });
 
     if (error) {
+      console.error("Supabase Error Details:", {
+        message: error.message,
+        details: error.details,
+        hint: error.hint,
+        code: error.code,
+        raw: error,
+        table: TACTICS_TABLE,
+        payloadKeys: Object.keys(payload),
+      });
       const message = formatSupabaseError(
         error,
         "Speichern fehlgeschlagen (möglicherweise RLS/Schema).",
       );
-      console.error("[tactics/supabase] INSERT error", error);
-      return { success: false, error: message };
+      return {
+        success: false,
+        error:
+          message ||
+          safeErrorMessage(
+            error,
+            "INSERT fehlgeschlagen (PostgrestError ohne message/details/hint).",
+          ),
+      };
     }
 
     if (!data?.id) {
@@ -540,9 +530,26 @@ export async function updateTactic(
     logSupabase("UPDATE result", { data, error });
 
     if (error) {
+      console.error("Supabase Error Details:", {
+        message: error.message,
+        details: error.details,
+        hint: error.hint,
+        code: error.code,
+        raw: error,
+        table: TACTICS_TABLE,
+        id: params.id,
+        payloadKeys: Object.keys(payload),
+      });
       const message = formatSupabaseError(error, "Aktualisieren fehlgeschlagen.");
-      console.error("[tactics/supabase] UPDATE error", error);
-      return { success: false, error: message };
+      return {
+        success: false,
+        error:
+          message ||
+          safeErrorMessage(
+            error,
+            "UPDATE fehlgeschlagen (PostgrestError ohne message/details/hint).",
+          ),
+      };
     }
 
     if (!data?.id) {
@@ -584,6 +591,14 @@ export async function saveTacticsBoardWithClient(
       return { success: false, error: toSaveUserMessage(serializeError) };
     }
 
+    // board_data muss gültiges JSONB-Objekt sein (kein String)
+    if (!boardData || typeof boardData !== "object" || Array.isArray(boardData)) {
+      return { success: false, error: "board_data ist kein gültiges JSON-Objekt." };
+    }
+    if (!Array.isArray(boardData.keyframes)) {
+      return { success: false, error: "board_data.keyframes fehlt oder ist ungültig." };
+    }
+
     const existingId = safeTrim(document.id) || undefined;
 
     logSupabase("saveTacticsBoardWithClient", {
@@ -591,6 +606,7 @@ export async function saveTacticsBoardWithClient(
       existingId: existingId ?? null,
       mode: existingId ? "update" : "insert",
       table: TACTICS_TABLE,
+      payloadColumns: ["title", "board_data", "video_url?"],
       keyframeCount: boardData.keyframes.length,
       boardDataBytes: JSON.stringify(boardData).length,
     });
@@ -605,12 +621,27 @@ export async function saveTacticsBoardWithClient(
       if (looksMissing) {
         return await saveTactic({ title, boardData }, client);
       }
-      return updated;
+      return {
+        success: false,
+        error: safeErrorMessage(
+          updated.error,
+          "Aktualisieren fehlgeschlagen (keine Fehlerdetails von updateTactic).",
+        ),
+      };
     }
 
-    return await saveTactic({ title, boardData }, client);
+    const inserted = await saveTactic({ title, boardData }, client);
+    if (inserted.success) return inserted;
+    return {
+      success: false,
+      error: safeErrorMessage(
+        inserted.error,
+        "INSERT fehlgeschlagen (keine Fehlerdetails von saveTactic).",
+      ),
+    };
   } catch (error) {
     console.error("[tactics/supabase] saveTacticsBoardWithClient exception", error);
+    console.error("Supabase Error Details:", error);
     return { success: false, error: toSaveUserMessage(error) };
   }
 }
@@ -642,31 +673,49 @@ export async function saveTacticsBoard(
       body: JSON.stringify({ document, options }),
     });
 
+    const rawText = await response.text();
     let payload: unknown = null;
-    try {
-      payload = await response.json();
-    } catch {
-      payload = null;
+    if (rawText.trim()) {
+      try {
+        payload = JSON.parse(rawText);
+      } catch {
+        payload = null;
+      }
     }
 
     if (payload && typeof payload === "object") {
-      const result = payload as SaveTacticsBoardResult;
+      const result = payload as SaveTacticsBoardResult & { details?: unknown };
       if (typeof result.success === "boolean") {
+        const errorText =
+          result.error != null
+            ? safeErrorMessage(result.error, "Speichern fehlgeschlagen.")
+            : undefined;
+        if (!result.success) {
+          return {
+            success: false,
+            error:
+              errorText ||
+              safeErrorMessage(
+                result.details,
+                `Speichern fehlgeschlagen (HTTP ${response.status}, API ohne error-Feld).`,
+              ),
+          };
+        }
         return {
-          success: result.success,
+          success: true,
           id: typeof result.id === "string" ? result.id : undefined,
           videoUrl: result.videoUrl,
-          error: result.error != null ? safeErrorMessage(result.error) : undefined,
+          error: errorText,
         };
       }
     }
 
+    const snippet = rawText.trim().slice(0, 280);
     return {
       success: false,
-      error: safeErrorMessage(
-        payload,
-        `Speichern fehlgeschlagen (HTTP ${response.status}).`,
-      ),
+      error:
+        snippet ||
+        `Speichern fehlgeschlagen (HTTP ${response.status} ${response.statusText || ""}).`.trim(),
     };
   } catch (error) {
     console.error("[tactics/supabase] saveTacticsBoard proxy exception", error);

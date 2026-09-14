@@ -222,13 +222,21 @@ export function TacticsBoard({ exerciseId, initialName }: TacticsBoardProps) {
         return;
       }
 
+      if (result.success && !result.id) {
+        showSaveError(
+          result.error ||
+            "Speichern meldete Erfolg, aber keine ID (SELECT-RLS nach INSERT prüfen).",
+        );
+        return;
+      }
+
       const errText =
-        typeof result.error === "string"
+        typeof result.error === "string" && result.error.trim()
           ? result.error.trim()
           : result.error != null
             ? toSaveUserMessage(result.error)
-            : "Speichern fehlgeschlagen (keine Fehlerdetails).";
-      showSaveError(errText || "Speichern fehlgeschlagen (keine Fehlerdetails).");
+            : "Speichern fehlgeschlagen (API ohne error-Text — Server-Logs prüfen).";
+      showSaveError(errText);
     } catch (error) {
       showSaveError(toSaveUserMessage(error));
     } finally {
