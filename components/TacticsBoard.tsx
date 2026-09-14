@@ -1,13 +1,12 @@
 "use client";
 
-import dynamic from "next/dynamic";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
 import type Konva from "konva";
 import { Toolbar } from "./tactics-board/Toolbar";
 import { Timeline } from "./tactics-board/Timeline";
 import { ObjectInspector } from "./tactics-board/ObjectInspector";
 import { PlaybackBar } from "./tactics-board/PlaybackBar";
+import { FieldCanvasClient as FieldCanvas } from "./FieldCanvasClient";
 import { useTacticsBoard } from "@/lib/tactics-board/useTacticsBoard";
 import {
   saveTacticsBoard,
@@ -16,7 +15,11 @@ import {
   getSupabaseConfigError,
   toSaveUserMessage,
 } from "@/lib/tactics-board/supabase";
-import { recoverFromChunkLoadError, isChunkLoadError } from "@/lib/chunkLoadRecovery";
+import {
+  recoverFromChunkLoadError,
+  isChunkLoadError,
+  replaceUrlQuietly,
+} from "@/lib/chunkLoadRecovery";
 import { exportTacticsAnimation, type ExportFormat } from "@/lib/tactics-board/exportAnimation";
 import { FIELD_HEIGHT, FIELD_WIDTH, createEmptyKeyframe } from "@/lib/tactics-board/types";
 import {
@@ -28,34 +31,8 @@ import {
 import { ExerciseLibraryModal } from "./tactics-board/ExerciseLibraryModal";
 
 const LOAD_FAILURE_TOAST = "Übung konnte nicht geladen werden";
-
-const FieldCanvas = dynamic(
-  () =>
-    import("./tactics-board/FieldCanvas")
-      .then((m) => m.FieldCanvas)
-      .catch((error) => {
-        console.error("[TacticsBoard] FieldCanvas-Chunk fehlgeschlagen:", error);
-        if (isChunkLoadError(error) || /failed to fetch/i.test(String(error?.message ?? error))) {
-          recoverFromChunkLoadError(error);
-        }
-        // Fallback-Komponente verhindert harten Crash während Reload
-        return function FieldCanvasChunkError() {
-          return (
-            <div className="flex aspect-video w-full items-center justify-center rounded-xl border border-amber-500/40 bg-slate-900/80 px-4 text-center text-sm text-amber-100">
-              Spielfeld-Modul konnte nicht geladen werden. Seite wird aktualisiert…
-            </div>
-          );
-        };
-      }),
-  {
-    ssr: false,
-    loading: () => (
-      <div className="flex aspect-video w-full items-center justify-center rounded-xl border border-slate-700 bg-emerald-900/30">
-        <span className="text-slate-400">Spielfeld wird geladen…</span>
-      </div>
-    ),
-  },
-);
+const SAVE_NETWORK_TOAST =
+  "Speichern fehlgeschlagen. Bitte Internetverbindung prüfen.";
 
 interface TacticsBoardProps {
   exerciseId?: string;
@@ -63,7 +40,6 @@ interface TacticsBoardProps {
 }
 
 export function TacticsBoard({ exerciseId, initialName }: TacticsBoardProps) {
-  const router = useRouter();
   const board = useTacticsBoard();
   const { applyDocument } = board;
   const stageRef = useRef<Konva.Stage | null>(null);
@@ -187,8 +163,12 @@ export function TacticsBoard({ exerciseId, initialName }: TacticsBoardProps) {
 
     const showSaveError = (message: string, cause?: unknown) => {
       console.error("[TacticsBoard] Speichern fehlgeschlagen:", message, cause ?? "");
+      // Chunk/stale-build → Reload; Netzwerk → nur Toast (kein Red-Screen)
       if (isChunkLoadError(cause) || isChunkLoadError(message)) {
         recoverFromChunkLoadError(cause ?? message);
+        setSaveStatus("App-Update erkannt — Seite wird neu geladen…");
+        setToastWarning("App-Update erkannt — Seite wird neu geladen…");
+        return;
       }
       setSaveStatus(message);
       setToastWarning(message);
@@ -202,50 +182,58 @@ export function TacticsBoard({ exerciseId, initialName }: TacticsBoardProps) {
         return;
       }
 
-      let result;
-      try {
-        result = await saveTacticsBoard(
-          {
-            ...board.document,
-            name: boardName,
-            exerciseId,
-            fieldView: board.fieldView,
-            fieldRotation: board.fieldRotation,
-            coordSpace: "viewport",
-          },
-          { exerciseId, name: boardName },
-        );
-      } catch (saveError) {
-        showSaveError(toSaveUserMessage(saveError), saveError);
-        return;
-      }
+      // Nur bereits statisch importierte Module — kein await import() im Save-Pfad
+      const result = await saveTacticsBoard(
+        {
+          ...board.document,
+          name: boardName,
+          exerciseId,
+          fieldView: board.fieldView,
+          fieldRotation: board.fieldRotation,
+          coordSpace: "viewport",
+        },
+        { exerciseId, name: boardName },
+      );
 
       console.log("[TacticsBoard] save result", result);
 
       if (result.success && result.id) {
         board.setDocument((prev) => ({ ...prev, id: result.id, coordSpace: "viewport" }));
-        try {
-          router.replace(
-            `/admin/tactics-board?exerciseId=${encodeURIComponent(result.id)}&name=${encodeURIComponent(boardName)}`,
-          );
-        } catch (navError) {
-          console.warn("[TacticsBoard] Navigation nach Speichern fehlgeschlagen:", navError);
-          if (isChunkLoadError(navError)) {
-            recoverFromChunkLoadError(navError);
-          }
-        }
+        // Kein router.replace → vermeidet Next soft-nav + nachgeladene Chunks
+        replaceUrlQuietly(
+          `/admin/tactics-board?exerciseId=${encodeURIComponent(result.id)}&name=${encodeURIComponent(boardName)}`,
+        );
         setSaveStatus("Gespeichert!");
         window.setTimeout(() => setSaveStatus(null), 3000);
         return;
       }
 
-      showSaveError(result.error ?? "Fehler beim Speichern in Supabase", result);
+      const errText = result.error ?? "";
+      if (isChunkLoadError(errText)) {
+        showSaveError(errText, errText);
+        return;
+      }
+      if (/failed to fetch|networkerror|netzwerk/i.test(errText)) {
+        showSaveError(SAVE_NETWORK_TOAST, result);
+        return;
+      }
+      showSaveError(errText || SAVE_NETWORK_TOAST, result);
     } catch (error) {
-      showSaveError(toSaveUserMessage(error), error);
+      // Nie unhandled: Toast oder Reload — kein Crash
+      if (isChunkLoadError(error)) {
+        showSaveError("App-Update erkannt — Seite wird neu geladen…", error);
+        return;
+      }
+      showSaveError(
+        /failed to fetch|networkerror/i.test(toSaveUserMessage(error))
+          ? SAVE_NETWORK_TOAST
+          : toSaveUserMessage(error, SAVE_NETWORK_TOAST),
+        error,
+      );
     } finally {
       setIsSaving(false);
     }
-  }, [board, boardName, exerciseId, isSaving, router]);
+  }, [board, boardName, exerciseId, isSaving]);
 
   const handleLibraryLoad = useCallback(
     async (id: string, title: string) => {
@@ -259,7 +247,7 @@ export function TacticsBoard({ exerciseId, initialName }: TacticsBoardProps) {
         if (document) {
           applyDocument(document);
           setBoardName(document.name || title);
-          router.replace(
+          replaceUrlQuietly(
             `/admin/tactics-board?exerciseId=${encodeURIComponent(id)}&name=${encodeURIComponent(document.name || title)}`,
           );
         } else {
@@ -269,13 +257,17 @@ export function TacticsBoard({ exerciseId, initialName }: TacticsBoardProps) {
         }
       } catch (error) {
         console.error("[TacticsBoard] Bibliothek laden Exception:", error);
-        resetToEmptyBoard();
-        showLoadFailureToast();
+        if (isChunkLoadError(error)) {
+          recoverFromChunkLoadError(error);
+        } else {
+          resetToEmptyBoard();
+          showLoadFailureToast();
+        }
       } finally {
         setIsLoading(false);
       }
     },
-    [applyDocument, board, resetToEmptyBoard, router, showLoadFailureToast],
+    [applyDocument, board, resetToEmptyBoard, showLoadFailureToast],
   );
 
   const toggleFullscreen = useCallback(async () => {

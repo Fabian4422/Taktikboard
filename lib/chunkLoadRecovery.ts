@@ -1,32 +1,44 @@
 const RELOAD_FLAG = "taktikboard:chunk-reload";
 
+function errorMessage(error: unknown): string {
+  if (error == null) return "";
+  if (typeof error === "string") return error;
+  if (error instanceof Error) return error.message || "";
+  if (
+    typeof error === "object" &&
+    "message" in error &&
+    typeof (error as { message: unknown }).message === "string"
+  ) {
+    return (error as { message: string }).message;
+  }
+  try {
+    return String(error);
+  } catch {
+    return "";
+  }
+}
+
+function errorName(error: unknown): string {
+  if (error instanceof Error) return error.name;
+  if (
+    typeof error === "object" &&
+    error !== null &&
+    "name" in error &&
+    typeof (error as { name: unknown }).name === "string"
+  ) {
+    return (error as { name: string }).name;
+  }
+  return "";
+}
+
 /** Erkennt Chunk-/Asset-Ladefehler nach Deployments (PWA/stale cache). */
 export function isChunkLoadError(error: unknown): boolean {
   if (error == null) return false;
 
-  const message =
-    typeof error === "string"
-      ? error
-      : error instanceof Error
-        ? error.message
-        : typeof error === "object" &&
-            error !== null &&
-            "message" in error &&
-            typeof (error as { message: unknown }).message === "string"
-          ? (error as { message: string }).message
-          : String(error);
+  const message = errorMessage(error);
+  const name = errorName(error);
 
-  const name =
-    error instanceof Error
-      ? error.name
-      : typeof error === "object" &&
-          error !== null &&
-          "name" in error &&
-          typeof (error as { name: unknown }).name === "string"
-        ? (error as { name: string }).name
-        : "";
-
-  return (
+  if (
     name === "ChunkLoadError" ||
     /Loading chunk [\d]+ failed/i.test(message) ||
     /Failed to fetch dynamically imported module/i.test(message) ||
@@ -34,7 +46,16 @@ export function isChunkLoadError(error: unknown): boolean {
     /error loading dynamically imported module/i.test(message) ||
     (/Failed to fetch/i.test(message) &&
       (/chunk/i.test(message) || /static\/chunks/i.test(message) || /_next\//i.test(message)))
-  );
+  ) {
+    return true;
+  }
+
+  // Webpack/Next wirft bei fehlgeschlagenem lazy-Chunk oft nur nacktes TypeError: Failed to fetch
+  if (name === "TypeError" && /^failed to fetch$/i.test(message.trim())) {
+    return true;
+  }
+
+  return false;
 }
 
 /**
@@ -57,12 +78,23 @@ export function recoverFromChunkLoadError(error?: unknown): boolean {
 
   console.warn("[chunkLoadRecovery] Veralteter Chunk — Seite wird neu geladen", error);
 
-  // Service Worker kann alte Builds cachen — vor Reload aktualisieren
   void (async () => {
     try {
       if ("serviceWorker" in navigator) {
         const regs = await navigator.serviceWorker.getRegistrations();
-        await Promise.all(regs.map((reg) => reg.update().catch(() => undefined)));
+        await Promise.all(
+          regs.map(async (reg) => {
+            try {
+              await reg.update();
+            } catch {
+              // ignore
+            }
+            // Alten SW nicht ewig festhalten
+            if (reg.waiting) {
+              reg.waiting.postMessage({ type: "SKIP_WAITING" });
+            }
+          }),
+        );
       }
     } catch {
       // ignore
@@ -80,5 +112,15 @@ export function clearChunkReloadFlag(): void {
     sessionStorage.removeItem(RELOAD_FLAG);
   } catch {
     // ignore
+  }
+}
+
+/** URL ohne Next soft-navigation aktualisieren (kein Chunk-Nachladen). */
+export function replaceUrlQuietly(url: string): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.history.replaceState(window.history.state, "", url);
+  } catch (error) {
+    console.warn("[replaceUrlQuietly] fehlgeschlagen", error);
   }
 }

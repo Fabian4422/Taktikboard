@@ -17,7 +17,9 @@ export function ChunkLoadRecovery() {
 
     const onUnhandledRejection = (event: PromiseRejectionEvent) => {
       if (!isChunkLoadError(event.reason)) return;
+      // Verhindert Next.js Redbox / unhandled rejection overlay
       event.preventDefault();
+      event.stopPropagation?.();
       recoverFromChunkLoadError(event.reason);
     };
 
@@ -25,6 +27,7 @@ export function ChunkLoadRecovery() {
       const candidate = event.error ?? event.message;
       if (!isChunkLoadError(candidate)) return;
       event.preventDefault();
+      event.stopPropagation();
       recoverFromChunkLoadError(candidate);
     };
 

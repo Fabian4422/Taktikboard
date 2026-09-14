@@ -9,16 +9,20 @@ interface Props {
 
 interface State {
   error: Error | null;
+  recovering: boolean;
 }
 
 /**
- * Fängt Render-/Chunk-Fehler ab und bietet Reload statt weißem Crash-Screen.
+ * Fängt Render-Fehler ab. Bei veralteten Chunks: stiller Reload, kein Red-Screen.
  */
 export class AppErrorBoundary extends Component<Props, State> {
-  state: State = { error: null };
+  state: State = { error: null, recovering: false };
 
-  static getDerivedStateFromError(error: Error): State {
-    return { error };
+  static getDerivedStateFromError(error: Error): Partial<State> {
+    if (isChunkLoadError(error)) {
+      return { error, recovering: true };
+    }
+    return { error, recovering: false };
   }
 
   componentDidCatch(error: Error, info: ErrorInfo) {
@@ -29,26 +33,25 @@ export class AppErrorBoundary extends Component<Props, State> {
   }
 
   private handleReload = () => {
-    if (this.state.error && recoverFromChunkLoadError(this.state.error)) return;
     window.location.reload();
   };
 
   render() {
     if (!this.state.error) return this.props.children;
 
+    if (this.state.recovering || isChunkLoadError(this.state.error)) {
+      return (
+        <div className="flex min-h-screen flex-col items-center justify-center gap-3 bg-slate-950 px-6 text-center text-slate-200">
+          <p className="text-sm">App-Update erkannt — Seite wird neu geladen…</p>
+        </div>
+      );
+    }
+
     const message = this.state.error.message || "Unbekannter Fehler";
-    const chunkHint = isChunkLoadError(this.state.error);
 
     return (
       <div className="flex min-h-screen flex-col items-center justify-center gap-4 bg-slate-950 px-6 text-center text-slate-100">
-        <h1 className="text-xl font-semibold">
-          {chunkHint ? "App-Update erkannt" : "Etwas ist schiefgelaufen"}
-        </h1>
-        <p className="max-w-md text-sm text-slate-300">
-          {chunkHint
-            ? "Nach einem Deployment fehlen veraltete Dateien. Bitte Seite neu laden."
-            : message}
-        </p>
+        <h1 className="text-xl font-semibold">Etwas ist schiefgelaufen</h1>
         <p className="max-w-lg break-words text-xs text-slate-500">{message}</p>
         <button
           type="button"
