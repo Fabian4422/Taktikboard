@@ -12,12 +12,8 @@ import {
   saveTacticsBoard,
   loadTacticsBoard,
   isSupabaseConfigured,
-  getSupabaseConfigError,
   toSaveUserMessage,
-  formatNetworkFetchError,
 } from "@/lib/tactics-board/supabase";
-// Eager: Supabase-Client beim Laden der Komponente im Speicher (kein await import)
-import { supabase, getSupabaseUrl } from "@/lib/supabase";
 import { replaceUrlQuietly } from "@/lib/url";
 import { exportTacticsAnimation, type ExportFormat } from "@/lib/tactics-board/exportAnimation";
 import { FIELD_HEIGHT, FIELD_WIDTH, createEmptyKeyframe } from "@/lib/tactics-board/types";
@@ -28,9 +24,6 @@ import {
   setExportTabTitle,
 } from "@/lib/tactics-board/exportNotifications";
 import { ExerciseLibraryModal } from "./tactics-board/ExerciseLibraryModal";
-
-// Side-effect: Modul graph hält supabase im initialen Chunk
-void supabase;
 
 const LOAD_FAILURE_TOAST = "Übung konnte nicht geladen werden";
 
@@ -62,7 +55,10 @@ export function TacticsBoard({ exerciseId, initialName }: TacticsBoardProps) {
   const previewRef = useRef<HTMLDivElement>(null);
   const [saveStatus, setSaveStatus] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
-  const [boardName, setBoardName] = useState(initialName ?? "Neues Taktikboard");
+  /** Neue Übung: leerer Name; URL-Name nur als Zwischenstand beim Laden per exerciseId */
+  const [boardName, setBoardName] = useState(() =>
+    exerciseId ? (initialName?.trim() || "") : "",
+  );
   const [isLoading, setIsLoading] = useState(Boolean(exerciseId));
   const [loadError, setLoadError] = useState<string | null>(null);
   const [toastWarning, setToastWarning] = useState<string | null>(null);
@@ -109,13 +105,14 @@ export function TacticsBoard({ exerciseId, initialName }: TacticsBoardProps) {
 
   const resetToEmptyBoard = useCallback(() => {
     applyDocument({
-      name: initialName ?? "Neues Taktikboard",
+      name: "",
       keyframes: [createEmptyKeyframe(1)],
       fieldWidth: FIELD_WIDTH,
       fieldHeight: FIELD_HEIGHT,
+      coordSpace: "viewport",
     });
-    setBoardName(initialName ?? "Neues Taktikboard");
-  }, [applyDocument, initialName]);
+    setBoardName("");
+  }, [applyDocument]);
 
   useEffect(() => {
     if (!exerciseId) {
@@ -177,34 +174,30 @@ export function TacticsBoard({ exerciseId, initialName }: TacticsBoardProps) {
     setSaveStatus("Speichern…");
     setLoadError(null);
 
-    const showSaveError = (message: string) => {
-      console.error("[TacticsBoard] Speichern fehlgeschlagen:", message);
-      setSaveStatus(message);
-      setToastWarning(message);
+    const showSaveError = (message: unknown) => {
+      const text =
+        typeof message === "string"
+          ? message.trim() || "Speichern fehlgeschlagen."
+          : message &&
+              typeof message === "object" &&
+              "message" in message &&
+              typeof (message as { message: unknown }).message === "string"
+            ? (message as { message: string }).message.trim()
+            : (() => {
+                try {
+                  return JSON.stringify(message);
+                } catch {
+                  return "Speichern fehlgeschlagen.";
+                }
+              })();
+      console.error("[TacticsBoard] Speichern fehlgeschlagen:", text);
+      setSaveStatus(text);
+      setToastWarning(text);
       window.setTimeout(() => setToastWarning(null), 10000);
     };
 
     try {
-      const configError = getSupabaseConfigError();
-      if (configError || !isSupabaseConfigured() || !supabase) {
-        showSaveError(
-          configError ??
-            "Supabase-URL oder Key fehlt in .env (NEXT_PUBLIC_SUPABASE_URL / NEXT_PUBLIC_SUPABASE_ANON_KEY).",
-        );
-        return;
-      }
-
-      const envUrl = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim();
-      const envKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY?.trim();
-      if (!envUrl || !envKey) {
-        showSaveError("Supabase-URL oder Key fehlt in .env");
-        return;
-      }
-      if (!/^https:\/\//i.test(envUrl)) {
-        showSaveError(`Supabase-URL muss mit https:// beginnen (aktuell: "${envUrl.slice(0, 64)}").`);
-        return;
-      }
-
+      // Speichern läuft über /api/tactics/save (Server-Proxy) — kein Client-CORS
       const result = await saveTacticsBoard(
         {
           ...board.document,
@@ -217,7 +210,7 @@ export function TacticsBoard({ exerciseId, initialName }: TacticsBoardProps) {
         { exerciseId, name: boardName },
       );
 
-      console.log("[TacticsBoard] save result", result, "url=", getSupabaseUrl());
+      console.log("[TacticsBoard] save result", result);
 
       if (result.success && result.id) {
         board.setDocument((prev) => ({ ...prev, id: result.id, coordSpace: "viewport" }));
@@ -229,16 +222,13 @@ export function TacticsBoard({ exerciseId, initialName }: TacticsBoardProps) {
         return;
       }
 
-      const errText = result.error?.trim() || "Speichern fehlgeschlagen (keine Fehlerdetails).";
-      if (/failed to fetch|netzwerk\/cors/i.test(errText)) {
-        showSaveError(
-          errText.includes("Aufruf von:")
-            ? errText
-            : formatNetworkFetchError(errText),
-        );
-        return;
-      }
-      showSaveError(errText);
+      const errText =
+        typeof result.error === "string"
+          ? result.error.trim()
+          : result.error != null
+            ? toSaveUserMessage(result.error)
+            : "Speichern fehlgeschlagen (keine Fehlerdetails).";
+      showSaveError(errText || "Speichern fehlgeschlagen (keine Fehlerdetails).");
     } catch (error) {
       showSaveError(toSaveUserMessage(error));
     } finally {
@@ -432,13 +422,23 @@ export function TacticsBoard({ exerciseId, initialName }: TacticsBoardProps) {
             >
               Vollbild
             </button>
-            <input
-              type="text"
-              value={boardName}
-              onChange={(e) => setBoardName(e.target.value)}
-              className="rounded-lg border border-slate-600 bg-slate-800 px-3 py-2 text-sm text-white"
-              placeholder="Name des Boards"
-            />
+            <label className="relative inline-flex min-w-[16rem] max-w-xs flex-1 items-center">
+              <span className="pointer-events-none absolute left-3 text-sky-300/90" aria-hidden>
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M12 20h9" />
+                  <path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" />
+                </svg>
+              </span>
+              <input
+                type="text"
+                value={boardName}
+                onChange={(e) => setBoardName(e.target.value)}
+                className="w-full rounded-lg border border-sky-500/45 bg-slate-950 py-2 pl-9 pr-3 text-sm text-white shadow-[inset_0_1px_2px_rgba(0,0,0,0.45)] placeholder:text-slate-500 outline-none transition focus:border-sky-400 focus:ring-2 focus:ring-sky-400/35"
+                placeholder="Name der Übung eingeben…"
+                aria-label="Name der Übung"
+                autoComplete="off"
+              />
+            </label>
             <button
               type="button"
               onClick={() => setLibraryOpen(true)}

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { BoardElement, TextBoxBackgroundStyle, TextBoxFontFamily } from "@/lib/tactics-board/types";
 import {
   CONE_COLOR_OPTIONS,
@@ -85,6 +85,8 @@ export function ObjectInspector({
   const [fontSizeDraft, setFontSizeDraft] = useState(() =>
     String(getTextBoxFontSize(element)),
   );
+  const durationFocusedRef = useRef(false);
+  const fontSizeFocusedRef = useRef(false);
 
   useEffect(() => {
     setXDraft(String(Math.round(element.x)));
@@ -96,10 +98,12 @@ export function ObjectInspector({
   }, [element.id, element.text]);
 
   useEffect(() => {
+    if (durationFocusedRef.current) return;
     setDurationDraft(String(Number(getTextBoxDisplayDuration(element).toFixed(1))));
   }, [element.id, element.duration]);
 
   useEffect(() => {
+    if (fontSizeFocusedRef.current) return;
     setFontSizeDraft(String(getTextBoxFontSize(element)));
   }, [element.id, element.fontSize]);
 
@@ -253,7 +257,13 @@ export function ObjectInspector({
               inputMode="decimal"
               value={fontSizeDraft}
               onChange={(e) => setFontSizeDraft(e.target.value)}
-              onBlur={() => commitFontSize(fontSizeDraft)}
+              onFocus={() => {
+                fontSizeFocusedRef.current = true;
+              }}
+              onBlur={() => {
+                fontSizeFocusedRef.current = false;
+                commitFontSize(fontSizeDraft);
+              }}
               onKeyDown={(e) => {
                 if (e.key === "Enter") e.currentTarget.blur();
               }}
@@ -358,7 +368,13 @@ export function ObjectInspector({
               inputMode="decimal"
               value={durationDraft}
               onChange={(e) => setDurationDraft(e.target.value)}
-              onBlur={() => commitDuration(durationDraft)}
+              onFocus={() => {
+                durationFocusedRef.current = true;
+              }}
+              onBlur={() => {
+                durationFocusedRef.current = false;
+                commitDuration(durationDraft);
+              }}
               onKeyDown={(e) => {
                 if (e.key === "Enter") e.currentTarget.blur();
               }}

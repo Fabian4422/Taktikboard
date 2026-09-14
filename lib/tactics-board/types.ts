@@ -463,14 +463,24 @@ export function interpolateElements(
   const result: InterpolatedElement[] = from.map((fromEl) => {
     const toEl = toMap.get(fromEl.id);
     if (!toEl) {
+      if (fromEl.type === "text-box") {
+        return { ...fromEl, opacity: 0 };
+      }
       return { ...fromEl, opacity: 1 - t };
+    }
+    if (fromEl.type === "text-box" || toEl.type === "text-box") {
+      return { ...toEl, points: toEl.points ? [...toEl.points] : undefined, opacity: 1 };
     }
     return interpolatePair(fromEl, toEl, t);
   });
 
   to.forEach((toEl) => {
     if (!fromIds.has(toEl.id)) {
-      result.push({ ...toEl, opacity: t });
+      if (toEl.type === "text-box") {
+        result.push({ ...toEl, points: toEl.points ? [...toEl.points] : undefined, opacity: 1 });
+      } else {
+        result.push({ ...toEl, opacity: t });
+      }
     }
   });
 
@@ -626,7 +636,7 @@ export function getPlaybackPlan(keyframes: Keyframe[]): { timings: SegmentTiming
 
 /**
  * Hold-Phase: Pause-Frame (alle Elemente eingefroren am Start-Schritt).
- * Move-Phase: gemeinsame Interpolation; alle Objekte starten/ankommen gleichzeitig.
+ * Move-Phase: Spieler/Bälle interpolieren; Textfelder wechseln sofort (kein Fade über die Bewegung).
  */
 export function interpolateElementsTimed(
   from: BoardElement[],
@@ -654,14 +664,27 @@ export function interpolateElementsTimed(
   const result: InterpolatedElement[] = from.map((fromEl) => {
     const toEl = toMap.get(fromEl.id);
     if (!toEl) {
+      // Textfelder aus Schritt N sofort ausblenden (nicht über die Bewegung einblenden)
+      if (fromEl.type === "text-box") {
+        return { ...fromEl, opacity: 0 };
+      }
       return { ...fromEl, opacity: 1 - t };
+    }
+    // Gemeinsames Textfeld: Inhalt/Position von Schritt N+1 sofort
+    if (fromEl.type === "text-box" || toEl.type === "text-box") {
+      return { ...toEl, points: toEl.points ? [...toEl.points] : undefined, opacity: 1 };
     }
     return interpolatePair(fromEl, toEl, t);
   });
 
   to.forEach((toEl) => {
     if (!fromIds.has(toEl.id)) {
-      result.push({ ...toEl, opacity: t });
+      // Neue Textfelder aus Schritt N+1 sofort sichtbar
+      if (toEl.type === "text-box") {
+        result.push({ ...toEl, points: toEl.points ? [...toEl.points] : undefined, opacity: 1 });
+      } else {
+        result.push({ ...toEl, opacity: t });
+      }
     }
   });
 

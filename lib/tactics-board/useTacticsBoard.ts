@@ -35,7 +35,7 @@ import { createId } from "@/lib/uuid";
 import { getExportHoldMs } from "@/lib/tactics-board/exportShared";
 
 const DEFAULT_DOCUMENT: TacticsBoardDocument = {
-  name: "Neues Taktikboard",
+  name: "",
   keyframes: [createEmptyKeyframe(1)],
   fieldWidth: FIELD_WIDTH,
   fieldHeight: FIELD_HEIGHT,

@@ -9,6 +9,7 @@ import {
   formatNetworkFetchError,
 } from "@/lib/supabase";
 import { createId } from "@/lib/uuid";
+import type { SupabaseClient } from "@supabase/supabase-js";
 
 export { isSupabaseConfigured, getSupabaseConfigError, getSupabaseUrl, formatNetworkFetchError };
 
@@ -17,6 +18,34 @@ void supabase;
 
 /** ~900 KB JSON — unter typischen API-Gateway-Limits; Base64-Bilder wären zu groß. */
 const MAX_BOARD_DATA_BYTES = 900_000;
+
+/** Sicheres Trim — nie auf Non-Strings `.trim()` aufrufen. */
+export function safeTrim(value: unknown): string {
+  if (typeof value === "string") return value.trim();
+  if (typeof value === "number" && Number.isFinite(value)) return String(value);
+  return "";
+}
+
+/** Fehlermeldung sicher als String (vermeidet `r.trim is not a function`). */
+export function safeErrorMessage(err: unknown, fallback = "Unbekannter Fehler"): string {
+  if (typeof err === "string") {
+    const t = err.trim();
+    return t || fallback;
+  }
+  if (err && typeof err === "object" && "message" in err) {
+    const m = (err as { message?: unknown }).message;
+    if (typeof m === "string" && m.trim()) return m.trim();
+  }
+  if (err && typeof err === "object" && "error" in err) {
+    const nested = (err as { error?: unknown }).error;
+    if (typeof nested === "string" && nested.trim()) return nested.trim();
+  }
+  try {
+    return JSON.stringify(err);
+  } catch {
+    return fallback;
+  }
+}
 
 /** Aktuelle Speichertabelle (nicht `tactics_boards` / `boards`). */
 export const TACTICS_TABLE = "tactics";
@@ -169,10 +198,10 @@ export function extractSupabaseErrorText(error: unknown, fallback = "Unbekannter
   if (error instanceof Error) {
     const anyErr = error as Error & SupabaseLikeError;
     const parts = [
-      anyErr.message?.trim() || null,
-      anyErr.details ? String(anyErr.details) : null,
-      anyErr.hint ? `hint=${anyErr.hint}` : null,
-      anyErr.code ? `code=${anyErr.code}` : null,
+      typeof anyErr.message === "string" ? anyErr.message.trim() || null : null,
+      typeof anyErr.details === "string" ? anyErr.details : null,
+      typeof anyErr.hint === "string" ? `hint=${anyErr.hint}` : null,
+      typeof anyErr.code === "string" ? `code=${anyErr.code}` : null,
     ].filter(Boolean);
     if (parts.length > 0) return parts.join(" | ");
   }
@@ -194,15 +223,7 @@ export function extractSupabaseErrorText(error: unknown, fallback = "Unbekannter
     }
   }
 
-  try {
-    return JSON.stringify(error);
-  } catch {
-    try {
-      return String(error);
-    } catch {
-      return fallback;
-    }
-  }
+  return safeErrorMessage(error, fallback);
 }
 
 function boardDataToDocument(
@@ -311,19 +332,22 @@ async function uploadTacticVideo(
 
 /**
  * Speichert eine Übung in der Tabelle `tactics` (JSONB board_data).
- * Kein user_id-Filter: Gäste speichern anonym über den anon-Key (RLS muss SELECT+INSERT erlauben).
+ * `client` für Server-Proxy; sonst Browser-Singleton.
  */
-export async function saveTactic(params: {
-  title: string;
-  boardData: BoardData;
-  video?: TacticExportFile | null;
-}): Promise<SaveTacticResult> {
+export async function saveTactic(
+  params: {
+    title: string;
+    boardData: BoardData;
+    video?: TacticExportFile | null;
+  },
+  client: SupabaseClient | null = supabase,
+): Promise<SaveTacticResult> {
   const configError = getSupabaseConfigError();
   if (configError) {
     return { success: false, error: configError };
   }
 
-  const title = params.title.trim();
+  const title = safeTrim(params.title);
   if (!title) {
     return { success: false, error: "Bitte einen Titel für die Übung eingeben." };
   }
@@ -362,7 +386,7 @@ export async function saveTactic(params: {
       userIdFilter: null,
     });
 
-    if (!supabase) {
+    if (!client) {
       return {
         success: false,
         error:
@@ -374,8 +398,7 @@ export async function saveTactic(params: {
     let data: { id: string } | null = null;
     let error: SupabaseLikeError | null = null;
     try {
-      // Nur Spalten der Tabelle tactics: title, board_data, video_url
-      const result = await supabase.from(TACTICS_TABLE).insert(payload).select("id").single();
+      const result = await client.from(TACTICS_TABLE).insert(payload).select("id").single();
       data = result.data;
       error = result.error;
     } catch (fetchError) {
@@ -402,7 +425,7 @@ export async function saveTactic(params: {
     }
 
     try {
-      const verify = await supabase
+      const verify = await client
         .from(TACTICS_TABLE)
         .select("id, title")
         .eq("id", data.id)
@@ -438,18 +461,21 @@ export async function saveTactic(params: {
 }
 
 /** Aktualisiert eine bestehende Übung in der Tabelle `tactics`. */
-export async function updateTactic(params: {
-  id: string;
-  title: string;
-  boardData: BoardData;
-  video?: TacticExportFile | null;
-}): Promise<SaveTacticResult> {
+export async function updateTactic(
+  params: {
+    id: string;
+    title: string;
+    boardData: BoardData;
+    video?: TacticExportFile | null;
+  },
+  client: SupabaseClient | null = supabase,
+): Promise<SaveTacticResult> {
   const configError = getSupabaseConfigError();
   if (configError) {
     return { success: false, error: configError };
   }
 
-  const title = params.title.trim();
+  const title = safeTrim(params.title);
   if (!title) {
     return { success: false, error: "Bitte einen Titel für die Übung eingeben." };
   }
@@ -486,7 +512,7 @@ export async function updateTactic(params: {
       supabaseUrl: getSupabaseUrl() || null,
     });
 
-    if (!supabase) {
+    if (!client) {
       return {
         success: false,
         error:
@@ -498,7 +524,7 @@ export async function updateTactic(params: {
     let data: { id: string; video_url: string | null } | null = null;
     let error: SupabaseLikeError | null = null;
     try {
-      const result = await supabase
+      const result = await client
         .from(TACTICS_TABLE)
         .update(payload)
         .eq("id", params.id)
@@ -538,24 +564,15 @@ export async function updateTactic(params: {
 }
 
 /**
- * Speichert oder aktualisiert ein Taktikboard-Dokument in Supabase.
- * Update nur bei bekannter Dokument-ID (nicht bei toter URL-exerciseId nach Lade-Fehler).
- * board_data ist JSONB — Schrittdauern/Textfelder liegen in keyframes[].elements.
+ * Server-/direkter Speichern-Pfad mit übergebenem Supabase-Client (API-Proxy).
  */
-export async function saveTacticsBoard(
+export async function saveTacticsBoardWithClient(
+  client: SupabaseClient,
   document: TacticsBoardDocument,
   options: SaveTacticsBoardOptions = {},
 ): Promise<SaveTacticsBoardResult> {
   try {
-    const configError = getSupabaseConfigError();
-    if (configError || !supabase) {
-      return {
-        success: false,
-        error: configError ?? "Supabase-Client konnte nicht initialisiert werden.",
-      };
-    }
-
-    const title = (options.name ?? document.name).trim();
+    const title = safeTrim(options.name ?? document.name);
     if (!title) {
       return { success: false, error: "Bitte einen Titel für die Übung eingeben." };
     }
@@ -567,61 +584,93 @@ export async function saveTacticsBoard(
       return { success: false, error: toSaveUserMessage(serializeError) };
     }
 
-    // Nur document.id = Zeile existiert wirklich. options.exerciseId allein
-    // (z. B. nach fehlgeschlagenem Load) würde UPDATE gegen eine tote ID feuern.
-    const existingId = document.id?.trim() || undefined;
+    const existingId = safeTrim(document.id) || undefined;
 
-    const textBoxCount = boardData.keyframes.reduce(
-      (n, kf) => n + kf.elements.filter((el) => el.type === "text-box").length,
-      0,
-    );
-    const durationFields = boardData.keyframes.reduce(
-      (n, kf) =>
-        n +
-        kf.elements.filter(
-          (el) => el.type === "text-box" && typeof el.duration === "number",
-        ).length,
-      0,
-    );
-
-    logSupabase("saveTacticsBoard", {
+    logSupabase("saveTacticsBoardWithClient", {
       title,
       existingId: existingId ?? null,
-      urlExerciseId: options.exerciseId ?? null,
       mode: existingId ? "update" : "insert",
       table: TACTICS_TABLE,
       keyframeCount: boardData.keyframes.length,
-      textBoxCount,
-      durationFields,
       boardDataBytes: JSON.stringify(boardData).length,
     });
 
     if (existingId) {
-      const updated = await updateTactic({ id: existingId, title, boardData });
+      const updated = await updateTactic({ id: existingId, title, boardData }, client);
       if (updated.success) return updated;
 
-      // Zeile fehlt / RLS: als Neu-Anlage versuchen, damit Speichern nicht stecken bleibt
-      const looksMissing =
-        /keine sichtbare Zeile|PGRST116|0 rows|not found|does not exist/i.test(
-          updated.error ?? "",
-        );
+      const looksMissing = /keine sichtbare Zeile|PGRST116|0 rows|not found|does not exist/i.test(
+        safeErrorMessage(updated.error, ""),
+      );
       if (looksMissing) {
-        logSupabase("saveTacticsBoard UPDATE→INSERT fallback", {
-          id: existingId,
-          reason: updated.error,
-        });
-        return await saveTactic({ title, boardData });
+        return await saveTactic({ title, boardData }, client);
       }
       return updated;
     }
 
-    return await saveTactic({ title, boardData });
+    return await saveTactic({ title, boardData }, client);
   } catch (error) {
-    console.error("[tactics/supabase] saveTacticsBoard exception", error);
+    console.error("[tactics/supabase] saveTacticsBoardWithClient exception", error);
+    return { success: false, error: toSaveUserMessage(error) };
+  }
+}
+
+/**
+ * Browser: speichert über Next.js-Proxy `/api/tactics/save` (kein direkter CORS-Call).
+ * Server: fällt auf direkten Client zurück.
+ */
+export async function saveTacticsBoard(
+  document: TacticsBoardDocument,
+  options: SaveTacticsBoardOptions = {},
+): Promise<SaveTacticsBoardResult> {
+  if (typeof window === "undefined") {
+    if (!supabase) {
+      return {
+        success: false,
+        error:
+          getSupabaseConfigError() ??
+          "Supabase-URL oder Key fehlt in .env (NEXT_PUBLIC_SUPABASE_URL / NEXT_PUBLIC_SUPABASE_ANON_KEY).",
+      };
+    }
+    return saveTacticsBoardWithClient(supabase, document, options);
+  }
+
+  try {
+    const response = await fetch("/api/tactics/save", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ document, options }),
+    });
+
+    let payload: unknown = null;
+    try {
+      payload = await response.json();
+    } catch {
+      payload = null;
+    }
+
+    if (payload && typeof payload === "object") {
+      const result = payload as SaveTacticsBoardResult;
+      if (typeof result.success === "boolean") {
+        return {
+          success: result.success,
+          id: typeof result.id === "string" ? result.id : undefined,
+          videoUrl: result.videoUrl,
+          error: result.error != null ? safeErrorMessage(result.error) : undefined,
+        };
+      }
+    }
+
     return {
       success: false,
-      error: toSaveUserMessage(error),
+      error: safeErrorMessage(
+        payload,
+        `Speichern fehlgeschlagen (HTTP ${response.status}).`,
+      ),
     };
+  } catch (error) {
+    console.error("[tactics/supabase] saveTacticsBoard proxy exception", error);
+    return { success: false, error: toSaveUserMessage(error) };
   }
 }
 
