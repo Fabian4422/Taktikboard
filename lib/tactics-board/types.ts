@@ -451,6 +451,25 @@ export function deepCloneKeyframe(keyframe: Keyframe): Keyframe {
   };
 }
 
+/** Textfelder ausschließlich aus dem Zielschritt — nie aus dem Quellschritt nachlöschen. */
+function textBoxesFromStep(stepElements: BoardElement[]): InterpolatedElement[] {
+  return stepElements
+    .filter((el) => el.type === "text-box")
+    .map((el) => ({
+      ...el,
+      points: el.points ? [...el.points] : undefined,
+      opacity: 1,
+    }));
+}
+
+function cloneAsOpaque(el: BoardElement): InterpolatedElement {
+  return {
+    ...el,
+    points: el.points ? [...el.points] : undefined,
+    opacity: 1,
+  };
+}
+
 /** Lineare Interpolation zwischen zwei Keyframes (t: 0..1) */
 export function interpolateElements(
   from: BoardElement[],
@@ -460,30 +479,25 @@ export function interpolateElements(
   const toMap = new Map(to.map((el) => [el.id, el]));
   const fromIds = new Set(from.map((el) => el.id));
 
-  const result: InterpolatedElement[] = from.map((fromEl) => {
-    const toEl = toMap.get(fromEl.id);
-    if (!toEl) {
-      if (fromEl.type === "text-box") {
-        return { ...fromEl, opacity: 0 };
+  const result: InterpolatedElement[] = from
+    .filter((fromEl) => fromEl.type !== "text-box")
+    .map((fromEl) => {
+      const toEl = toMap.get(fromEl.id);
+      if (!toEl || toEl.type === "text-box") {
+        return { ...fromEl, opacity: 1 - t };
       }
-      return { ...fromEl, opacity: 1 - t };
-    }
-    if (fromEl.type === "text-box" || toEl.type === "text-box") {
-      return { ...toEl, points: toEl.points ? [...toEl.points] : undefined, opacity: 1 };
-    }
-    return interpolatePair(fromEl, toEl, t);
-  });
+      return interpolatePair(fromEl, toEl, t);
+    });
 
   to.forEach((toEl) => {
+    if (toEl.type === "text-box") return;
     if (!fromIds.has(toEl.id)) {
-      if (toEl.type === "text-box") {
-        result.push({ ...toEl, points: toEl.points ? [...toEl.points] : undefined, opacity: 1 });
-      } else {
-        result.push({ ...toEl, opacity: t });
-      }
+      result.push({ ...toEl, opacity: t });
     }
   });
 
+  // Textfelder: strikt Zielschritt, kein Fade/Interpolation
+  result.push(...textBoxesFromStep(to));
   return result;
 }
 
@@ -599,7 +613,9 @@ export function getSegmentTiming(from: Keyframe, to: Keyframe): SegmentTiming {
   const travel = maxTravelDistance(from.elements, to.elements);
   const rotate = maxRotationDelta(from.elements, to.elements);
   const isStill = travel < STILL_TRAVEL_EPS && rotate < STILL_ROTATION_EPS;
-  const textHoldS = getSceneTextHoldDurationS(from.elements);
+  // Hold-Länge nur für Texte, die im Zielschritt noch existieren (sichtbar).
+  // In Schritt N+1 gelöschte Textfelder erzeugen keinen Hold und erscheinen nie im Segment.
+  const textHoldS = getSceneTextHoldDurationS(to.elements);
 
   const holdMs =
     textHoldS != null ? clampSegmentMs(textHoldS * 1000) : 0;
@@ -611,8 +627,8 @@ export function getSegmentTiming(from: Keyframe, to: Keyframe): SegmentTiming {
     const rotateMs = (rotate / 90) * ROTATE_MS_PER_90;
     const autoMs = Math.max(travelMs, rotateMs, MIN_SEGMENT_MS);
     moveMs = clampSegmentMs(autoMs * speedFactor);
-  } else if (holdMs === 0) {
-    // Reines Standbild ohne Textfeld: kurzer Mindest-Übergang
+  } else {
+    // Stillstand: kurzer Snap auf Zielschritt (verhindert „ewig from“ bei moveMs === 0)
     moveMs = MIN_SEGMENT_MS;
   }
 
@@ -635,8 +651,9 @@ export function getPlaybackPlan(keyframes: Keyframe[]): { timings: SegmentTiming
 }
 
 /**
- * Hold-Phase: Pause-Frame (alle Elemente eingefroren am Start-Schritt).
- * Move-Phase: Spieler/Bälle interpolieren; Textfelder wechseln sofort (kein Fade über die Bewegung).
+ * Hold: Spieler/Bälle eingefroren am Start-Schritt; Textfelder SOFORT = Zielschritt.
+ * Move: Spieler/Bälle interpolieren; Textfelder bleiben strikt am Zielschritt (kein Fade, kein from-Text).
+ * Wichtig: `moveMs <= 0` darf NIE den Quellschritt für das ganze Segment festnageln.
  */
 export function interpolateElementsTimed(
   from: BoardElement[],
@@ -646,49 +663,46 @@ export function interpolateElementsTimed(
 ): InterpolatedElement[] {
   const holdMs = timing.holdMs ?? 0;
   const moveMs = timing.moveMs ?? Math.max(0, timing.durationMs - holdMs);
+  const targetTexts = textBoxesFromStep(to);
 
-  // Pause-Frame: Spieler/Bälle/Elemente eingefroren, Textfeld bleibt sichtbar
-  if (elapsedMs < holdMs || moveMs <= 0) {
-    return from.map((el) => ({
-      ...el,
-      points: el.points ? [...el.points] : undefined,
-      opacity: 1,
-    }));
-  }
-
-  const toMap = new Map(to.map((el) => [el.id, el]));
-  const fromIds = new Set(from.map((el) => el.id));
-  const moveElapsed = elapsedMs - holdMs;
-  const t = Math.min(1, Math.max(0, moveElapsed / Math.max(moveMs, 1)));
-
-  const result: InterpolatedElement[] = from.map((fromEl) => {
-    const toEl = toMap.get(fromEl.id);
-    if (!toEl) {
-      // Textfelder aus Schritt N sofort ausblenden (nicht über die Bewegung einblenden)
-      if (fromEl.type === "text-box") {
-        return { ...fromEl, opacity: 0 };
-      }
-      return { ...fromEl, opacity: 1 - t };
+  // Nach Hold (oder ohne Hold): Zielzustand / Bewegung — Text immer aus `to`
+  if (elapsedMs >= holdMs) {
+    if (moveMs <= 0) {
+      return to.map(cloneAsOpaque);
     }
-    // Gemeinsames Textfeld: Inhalt/Position von Schritt N+1 sofort
-    if (fromEl.type === "text-box" || toEl.type === "text-box") {
-      return { ...toEl, points: toEl.points ? [...toEl.points] : undefined, opacity: 1 };
-    }
-    return interpolatePair(fromEl, toEl, t);
-  });
 
-  to.forEach((toEl) => {
-    if (!fromIds.has(toEl.id)) {
-      // Neue Textfelder aus Schritt N+1 sofort sichtbar
-      if (toEl.type === "text-box") {
-        result.push({ ...toEl, points: toEl.points ? [...toEl.points] : undefined, opacity: 1 });
-      } else {
+    const toMap = new Map(to.map((el) => [el.id, el]));
+    const fromIds = new Set(from.map((el) => el.id));
+    const moveElapsed = elapsedMs - holdMs;
+    const t = Math.min(1, Math.max(0, moveElapsed / Math.max(moveMs, 1)));
+
+    const result: InterpolatedElement[] = from
+      .filter((fromEl) => fromEl.type !== "text-box")
+      .map((fromEl) => {
+        const toEl = toMap.get(fromEl.id);
+        if (!toEl || toEl.type === "text-box") {
+          return { ...fromEl, opacity: 1 - t };
+        }
+        return interpolatePair(fromEl, toEl, t);
+      });
+
+    to.forEach((toEl) => {
+      if (toEl.type === "text-box") return;
+      if (!fromIds.has(toEl.id)) {
         result.push({ ...toEl, opacity: t });
       }
-    }
-  });
+    });
 
-  return result;
+    result.push(...targetTexts);
+    return result;
+  }
+
+  // Hold-Phase: Non-Text eingefroren auf `from`, Textfelder bereits exklusiv aus `to`
+  const held: InterpolatedElement[] = from
+    .filter((el) => el.type !== "text-box")
+    .map(cloneAsOpaque);
+  held.push(...targetTexts);
+  return held;
 }
 
 function interpolatePair(fromEl: BoardElement, toEl: BoardElement, t: number): InterpolatedElement {
