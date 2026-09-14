@@ -14,13 +14,16 @@ const nextConfig: NextConfig = {
     // Browser-Build von Konva nutzen (main zeigt auf index-node.js mit canvas-Abhängigkeit)
     if (!isServer) {
       config.resolve.mainFields = ["browser", "module", "main"];
-      // Weniger async Chunks: Module möglichst mit dem initialen Client-Bundle laden
-      // (verhindert Failed to fetch auf veraltete Chunk-URLs in der PWA)
+
+      /**
+       * KEIN separates `lib-*.js` Vendor-Chunk mehr (das verursachte Failed to fetch
+       * beim Speichern, wenn der Chunk nach Deployment fehlte).
+       * Supabase bleibt im initialen App-/Page-Bundle.
+       */
       config.optimization = {
         ...config.optimization,
         splitChunks: {
           chunks: "all",
-          maxAsyncRequests: 1,
           cacheGroups: {
             default: false,
             vendors: false,
@@ -31,12 +34,13 @@ const nextConfig: NextConfig = {
               priority: 40,
               enforce: true,
             },
-            lib: {
-              name: "lib",
-              test: new RegExp(String.raw`[\\/]node_modules[\\/]`),
+            // @supabase bewusst NICHT in eigenen Chunk — name:false merged in Parent
+            supabase: {
+              test: new RegExp(String.raw`[\\/]node_modules[\\/]@supabase[\\/]`),
+              name: false,
               chunks: "all",
-              priority: 30,
-              minChunks: 1,
+              priority: 50,
+              enforce: true,
               reuseExistingChunk: true,
             },
           },
@@ -70,7 +74,6 @@ function withOptionalPWA(config: NextConfig): NextConfig {
     reloadOnOnline: true,
     workboxOptions: {
       disableDevLogs: true,
-      // Ersetzt Defaults: Supabase nie cachen; Next-Assets mit kurzer CacheFirst-Strategie
       runtimeCaching: [
         {
           urlPattern: ({ url }: { url: URL }) =>
@@ -78,7 +81,6 @@ function withOptionalPWA(config: NextConfig): NextConfig {
           handler: "NetworkOnly" as const,
         },
         {
-          // JS-Chunks nie aus dem SW-Cache — sonst Failed to fetch nach Deployments
           urlPattern: /\/_next\/static\/chunks\/.*/i,
           handler: "NetworkOnly" as const,
         },

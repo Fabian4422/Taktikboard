@@ -7,6 +7,10 @@ import {
   listTactics,
   type TacticSummary,
 } from "@/lib/tactics-board/supabase";
+import { supabase } from "@/lib/supabase";
+
+// Eager: Client beim Öffnen der Bibliothek bereits geladen
+void supabase;
 
 interface ExerciseLibraryModalProps {
   open: boolean;

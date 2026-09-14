@@ -1,8 +1,10 @@
 import { TacticsBoard } from "@/components/TacticsBoard";
-// Statisch mit der Seite bundlen — kein lazy/dynamic Nachladen zur Laufzeit
+// Eager: Supabase-Client + Board-Module sofort im initialen Bundle (kein lazy Chunk)
+import { supabase } from "@/lib/supabase";
 import { ExerciseLibraryModal } from "@/components/tactics-board/ExerciseLibraryModal";
 import { FieldCanvas } from "@/components/tactics-board/FieldCanvas";
 
+void supabase;
 void ExerciseLibraryModal;
 void FieldCanvas;
 

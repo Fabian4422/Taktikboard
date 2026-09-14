@@ -3,6 +3,9 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { isSupabaseConfigured, listTactics, type TacticSummary } from "@/lib/tactics-board/supabase";
+import { supabase } from "@/lib/supabase";
+
+void supabase;
 
 export function SavedTacticsList() {
   const [items, setItems] = useState<TacticSummary[]>([]);

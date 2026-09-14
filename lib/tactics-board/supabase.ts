@@ -1,10 +1,17 @@
 import type { FieldRotation, FieldView, Keyframe, TacticsBoardDocument } from "./types";
 import { FIELD_HEIGHT, FIELD_WIDTH } from "./types";
 import { migrateTacticsDocument } from "./fieldLayout";
-import { getSupabaseClient, isSupabaseConfigured, getSupabaseConfigError } from "@/lib/supabaseClient";
+import {
+  supabase,
+  isSupabaseConfigured,
+  getSupabaseConfigError,
+} from "@/lib/supabase";
 import { createId } from "@/lib/uuid";
 
 export { isSupabaseConfigured, getSupabaseConfigError };
+
+// Eager-Bindung: kein lazy Nachladen von @supabase beim ersten Save/List
+void supabase;
 
 /** Aktuelle Speichertabelle (nicht `tactics_boards` / `boards`). */
 export const TACTICS_TABLE = "tactics";
@@ -237,7 +244,6 @@ async function uploadTacticVideo(
   title: string,
   video: TacticExportFile,
 ): Promise<{ publicUrl: string }> {
-  const supabase = getSupabaseClient();
   if (!supabase) {
     throw new Error("Supabase ist nicht konfiguriert (NEXT_PUBLIC_SUPABASE_URL / ANON_KEY fehlen).");
   }
@@ -308,7 +314,6 @@ export async function saveTactic(params: {
       userIdFilter: null,
     });
 
-    const supabase = getSupabaseClient();
     if (!supabase) {
       return {
         success: false,
@@ -424,7 +429,6 @@ export async function updateTactic(params: {
       payloadKeys: Object.keys(payload),
     });
 
-    const supabase = getSupabaseClient();
     if (!supabase) {
       return {
         success: false,
@@ -485,7 +489,7 @@ export async function saveTacticsBoard(
 ): Promise<SaveTacticsBoardResult> {
   try {
     const configError = getSupabaseConfigError();
-    if (configError || !getSupabaseClient()) {
+    if (configError || !supabase) {
       return {
         success: false,
         error: configError ?? "Supabase-Client konnte nicht initialisiert werden.",
@@ -598,7 +602,6 @@ export async function listTactics(): Promise<{ items: TacticSummary[]; error?: s
     };
   }
 
-  const supabase = getSupabaseClient();
   if (!supabase) {
     return {
       items: [],
@@ -667,7 +670,6 @@ export async function deleteTactic(id: string): Promise<{ success: boolean; erro
     };
   }
 
-  const supabase = getSupabaseClient();
   if (!supabase) {
     return {
       success: false,
@@ -704,7 +706,6 @@ export async function loadTactic(id: string): Promise<{ tactic: TacticRecord | n
     };
   }
 
-  const supabase = getSupabaseClient();
   if (!supabase) {
     return {
       tactic: null,

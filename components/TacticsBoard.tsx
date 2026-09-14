@@ -15,6 +15,8 @@ import {
   getSupabaseConfigError,
   toSaveUserMessage,
 } from "@/lib/tactics-board/supabase";
+// Eager: Supabase-Client beim Laden der Komponente im Speicher (kein await import)
+import { supabase } from "@/lib/supabase";
 import { replaceUrlQuietly } from "@/lib/url";
 import { exportTacticsAnimation, type ExportFormat } from "@/lib/tactics-board/exportAnimation";
 import { FIELD_HEIGHT, FIELD_WIDTH, createEmptyKeyframe } from "@/lib/tactics-board/types";
@@ -25,6 +27,9 @@ import {
   setExportTabTitle,
 } from "@/lib/tactics-board/exportNotifications";
 import { ExerciseLibraryModal } from "./tactics-board/ExerciseLibraryModal";
+
+// Side-effect: Modul graph hält supabase im initialen Chunk
+void supabase;
 
 const LOAD_FAILURE_TOAST = "Übung konnte nicht geladen werden";
 
