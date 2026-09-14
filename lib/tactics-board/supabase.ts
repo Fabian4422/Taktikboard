@@ -5,13 +5,18 @@ import {
   supabase,
   isSupabaseConfigured,
   getSupabaseConfigError,
+  getSupabaseUrl,
+  formatNetworkFetchError,
 } from "@/lib/supabase";
 import { createId } from "@/lib/uuid";
 
-export { isSupabaseConfigured, getSupabaseConfigError };
+export { isSupabaseConfigured, getSupabaseConfigError, getSupabaseUrl, formatNetworkFetchError };
 
 // Eager-Bindung: kein lazy Nachladen von @supabase beim ersten Save/List
 void supabase;
+
+/** ~900 KB JSON — unter typischen API-Gateway-Limits; Base64-Bilder wären zu groß. */
+const MAX_BOARD_DATA_BYTES = 900_000;
 
 /** Aktuelle Speichertabelle (nicht `tactics_boards` / `boards`). */
 export const TACTICS_TABLE = "tactics";
@@ -117,6 +122,40 @@ function buildTacticsWritePayload(params: {
     row.video_url = params.videoUrl ?? null;
   }
   return row;
+}
+
+function measurePayloadBytes(payload: Record<string, unknown>): number {
+  try {
+    return new TextEncoder().encode(JSON.stringify(payload)).length;
+  } catch {
+    return JSON.stringify(payload).length;
+  }
+}
+
+/** Lehnt übergroße Payloads ab (z. B. versehentliche Base64-Bilder in board_data). */
+function assertPayloadSize(payload: Record<string, unknown>): string | null {
+  const bytes = measurePayloadBytes(payload);
+  if (bytes > MAX_BOARD_DATA_BYTES) {
+    return `Payload zu groß (${Math.round(bytes / 1024)} KB). Bitte keine Base64-Bilder im Board speichern — max. ~${Math.round(MAX_BOARD_DATA_BYTES / 1024)} KB.`;
+  }
+  // Heuristik: data-URLs / riesige base64-Strings
+  const asText = JSON.stringify(payload.board_data ?? {});
+  if (/data:image\/[a-zA-Z+]+;base64,/i.test(asText) || /data:video\//i.test(asText)) {
+    return "board_data enthält eingebettete Base64-Medien. Bitte entfernen — Speichern würde am Body-Limit scheitern.";
+  }
+  return null;
+}
+
+function isFailedToFetchError(error: unknown): boolean {
+  const text = extractSupabaseErrorText(error, "");
+  return /failed to fetch|networkerror|load failed|fetch failed|network request failed/i.test(text);
+}
+
+function networkOrExtractError(error: unknown): string {
+  if (isFailedToFetchError(error)) {
+    return formatNetworkFetchError(error);
+  }
+  return extractSupabaseErrorText(error);
 }
 
 /** Extrahiert message / details / hint oder JSON — nie eine Pauschalmeldung. */
@@ -228,10 +267,12 @@ export function toSaveUserMessage(
   error: unknown,
   fallback = "Fehler beim Speichern in Supabase",
 ): string {
+  if (isFailedToFetchError(error)) {
+    return formatNetworkFetchError(error);
+  }
   const text = extractSupabaseErrorText(error, fallback);
   if (isNetworkFetchError(text)) {
-    // Originaltext behalten (z. B. Failed to fetch), nur Kontext ergänzen
-    return `Speichern fehlgeschlagen: ${text}`;
+    return formatNetworkFetchError(error);
   }
   return text;
 }
@@ -305,19 +346,28 @@ export async function saveTactic(params: {
       includeVideoUrl: true,
     });
 
+    const sizeError = assertPayloadSize(payload);
+    if (sizeError) {
+      return { success: false, error: sizeError };
+    }
+
     logSupabase("INSERT start", {
       table: TACTICS_TABLE,
       title,
       payloadKeys: Object.keys(payload),
+      payloadBytes: measurePayloadBytes(payload),
       keyframeCount: params.boardData.keyframes?.length ?? 0,
       hasVideo: Boolean(videoUrl),
+      supabaseUrl: getSupabaseUrl() || null,
       userIdFilter: null,
     });
 
     if (!supabase) {
       return {
         success: false,
-        error: getSupabaseConfigError() ?? "Supabase-Client konnte nicht initialisiert werden.",
+        error:
+          getSupabaseConfigError() ??
+          "Supabase-URL oder Key fehlt in .env (NEXT_PUBLIC_SUPABASE_URL / NEXT_PUBLIC_SUPABASE_ANON_KEY).",
       };
     }
 
@@ -330,7 +380,7 @@ export async function saveTactic(params: {
       error = result.error;
     } catch (fetchError) {
       console.error("[tactics/supabase] INSERT fetch exception", fetchError);
-      return { success: false, error: extractSupabaseErrorText(fetchError) };
+      return { success: false, error: networkOrExtractError(fetchError) };
     }
 
     logSupabase("INSERT result", { data, error });
@@ -422,17 +472,26 @@ export async function updateTactic(params: {
       includeVideoUrl: videoUrl !== undefined,
     });
 
+    const sizeError = assertPayloadSize(payload);
+    if (sizeError) {
+      return { success: false, error: sizeError };
+    }
+
     logSupabase("UPDATE start", {
       table: TACTICS_TABLE,
       id: params.id,
       title,
       payloadKeys: Object.keys(payload),
+      payloadBytes: measurePayloadBytes(payload),
+      supabaseUrl: getSupabaseUrl() || null,
     });
 
     if (!supabase) {
       return {
         success: false,
-        error: getSupabaseConfigError() ?? "Supabase-Client konnte nicht initialisiert werden.",
+        error:
+          getSupabaseConfigError() ??
+          "Supabase-URL oder Key fehlt in .env (NEXT_PUBLIC_SUPABASE_URL / NEXT_PUBLIC_SUPABASE_ANON_KEY).",
       };
     }
 
@@ -449,7 +508,7 @@ export async function updateTactic(params: {
       error = result.error;
     } catch (fetchError) {
       console.error("[tactics/supabase] UPDATE fetch exception", fetchError);
-      return { success: false, error: extractSupabaseErrorText(fetchError) };
+      return { success: false, error: networkOrExtractError(fetchError) };
     }
 
     logSupabase("UPDATE result", { data, error });

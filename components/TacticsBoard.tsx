@@ -14,9 +14,10 @@ import {
   isSupabaseConfigured,
   getSupabaseConfigError,
   toSaveUserMessage,
+  formatNetworkFetchError,
 } from "@/lib/tactics-board/supabase";
 // Eager: Supabase-Client beim Laden der Komponente im Speicher (kein await import)
-import { supabase } from "@/lib/supabase";
+import { supabase, getSupabaseUrl } from "@/lib/supabase";
 import { replaceUrlQuietly } from "@/lib/url";
 import { exportTacticsAnimation, type ExportFormat } from "@/lib/tactics-board/exportAnimation";
 import { FIELD_HEIGHT, FIELD_WIDTH, createEmptyKeyframe } from "@/lib/tactics-board/types";
@@ -185,21 +186,22 @@ export function TacticsBoard({ exerciseId, initialName }: TacticsBoardProps) {
 
     try {
       const configError = getSupabaseConfigError();
-      if (configError || !isSupabaseConfigured()) {
+      if (configError || !isSupabaseConfigured() || !supabase) {
         showSaveError(
           configError ??
-            "Supabase ist nicht konfiguriert (NEXT_PUBLIC_SUPABASE_URL / NEXT_PUBLIC_SUPABASE_ANON_KEY).",
+            "Supabase-URL oder Key fehlt in .env (NEXT_PUBLIC_SUPABASE_URL / NEXT_PUBLIC_SUPABASE_ANON_KEY).",
         );
         return;
       }
 
-      // Kurz prüfen, dass Env-Variablen im Client wirklich gesetzt sind
-      const envUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-      const envKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+      const envUrl = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim();
+      const envKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY?.trim();
       if (!envUrl || !envKey) {
-        showSaveError(
-          `Supabase-Env fehlt: URL=${envUrl ? "ok" : "undefined"}, ANON_KEY=${envKey ? "ok" : "undefined"}`,
-        );
+        showSaveError("Supabase-URL oder Key fehlt in .env");
+        return;
+      }
+      if (!/^https:\/\//i.test(envUrl)) {
+        showSaveError(`Supabase-URL muss mit https:// beginnen (aktuell: "${envUrl.slice(0, 64)}").`);
         return;
       }
 
@@ -215,7 +217,7 @@ export function TacticsBoard({ exerciseId, initialName }: TacticsBoardProps) {
         { exerciseId, name: boardName },
       );
 
-      console.log("[TacticsBoard] save result", result);
+      console.log("[TacticsBoard] save result", result, "url=", getSupabaseUrl());
 
       if (result.success && result.id) {
         board.setDocument((prev) => ({ ...prev, id: result.id, coordSpace: "viewport" }));
@@ -227,8 +229,16 @@ export function TacticsBoard({ exerciseId, initialName }: TacticsBoardProps) {
         return;
       }
 
-      // Immer die konkrete Supabase-/API-Meldung anzeigen — keine Pauschal-Netzwerk-Toast
-      showSaveError(result.error?.trim() || "Speichern fehlgeschlagen (keine Fehlerdetails).");
+      const errText = result.error?.trim() || "Speichern fehlgeschlagen (keine Fehlerdetails).";
+      if (/failed to fetch|netzwerk\/cors/i.test(errText)) {
+        showSaveError(
+          errText.includes("Aufruf von:")
+            ? errText
+            : formatNetworkFetchError(errText),
+        );
+        return;
+      }
+      showSaveError(errText);
     } catch (error) {
       showSaveError(toSaveUserMessage(error));
     } finally {

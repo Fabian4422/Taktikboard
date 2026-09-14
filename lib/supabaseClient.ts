@@ -7,4 +7,6 @@ export {
   getSupabaseClient,
   isSupabaseConfigured,
   getSupabaseConfigError,
+  getSupabaseUrl,
+  formatNetworkFetchError,
 } from "./supabase";
