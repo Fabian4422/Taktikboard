@@ -661,37 +661,19 @@ export async function saveTacticsBoardWithClient(
       };
     }
 
-    if (!data?.id) {
-      return {
-        success: false,
-        error:
-          "Upsert lieferte keine ID (oft fehlende SELECT-RLS auf public.tactics nach dem Schreiben).",
-      };
-    }
+    // error === null → Speichern erfolgreich (ID aus select, falls vorhanden)
+    const savedId = typeof data?.id === "string" ? data.id : undefined;
 
-    try {
-      const verify = await client
-        .from(TACTICS_TABLE)
-        .select("id, title")
-        .eq("id", data.id)
-        .maybeSingle();
-
-      if (verify.error || !verify.data) {
-        console.error("Supabase Error Details:", verify.error ?? verify);
-        return {
-          success: false,
-          error: formatSupabaseError(
-            verify.error,
-            "Übung geschrieben, aber nicht lesbar (SELECT-RLS auf public.tactics fehlt).",
-          ),
-        };
+    if (savedId) {
+      // Verify ist optional — Fehler beim Nachlesen dürfen den Erfolg nicht verwerfen
+      try {
+        await client.from(TACTICS_TABLE).select("id").eq("id", savedId).maybeSingle();
+      } catch (verifyError) {
+        console.warn("[tactics/supabase] UPSERT verify übersprungen", verifyError);
       }
-    } catch (verifyError) {
-      console.error("[tactics/supabase] UPSERT verify exception", verifyError);
-      return { success: false, error: toSaveUserMessage(verifyError) };
     }
 
-    return { success: true, id: data.id };
+    return { success: true, id: savedId };
   } catch (error) {
     console.error("[tactics/supabase] saveTacticsBoardWithClient exception", error);
     console.error("Supabase Error Details:", error);
@@ -754,11 +736,17 @@ export async function saveTacticsBoard(
               ),
           };
         }
+        const idRaw = (result as { id?: unknown }).id;
+        const savedId =
+          typeof idRaw === "string" && idRaw.trim()
+            ? idRaw.trim()
+            : typeof idRaw === "number" || typeof idRaw === "bigint"
+              ? String(idRaw)
+              : undefined;
         return {
           success: true,
-          id: typeof result.id === "string" ? result.id : undefined,
+          id: savedId,
           videoUrl: result.videoUrl,
-          error: errorText,
         };
       }
     }

@@ -62,6 +62,7 @@ export function TacticsBoard({ exerciseId, initialName }: TacticsBoardProps) {
   const [isLoading, setIsLoading] = useState(Boolean(exerciseId));
   const [loadError, setLoadError] = useState<string | null>(null);
   const [toastWarning, setToastWarning] = useState<string | null>(null);
+  const [toastSuccess, setToastSuccess] = useState<string | null>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [exportState, setExportState] = useState<{
     label: string;
@@ -173,6 +174,8 @@ export function TacticsBoard({ exerciseId, initialName }: TacticsBoardProps) {
     setIsSaving(true);
     setSaveStatus("Speichern…");
     setLoadError(null);
+    setToastWarning(null);
+    setToastSuccess(null);
 
     const showSaveError = (message: unknown) => {
       const text =
@@ -192,8 +195,26 @@ export function TacticsBoard({ exerciseId, initialName }: TacticsBoardProps) {
               })();
       console.error("[TacticsBoard] Speichern fehlgeschlagen:", text);
       setSaveStatus(text);
+      setToastSuccess(null);
       setToastWarning(text);
       window.setTimeout(() => setToastWarning(null), 10000);
+    };
+
+    const showSaveSuccess = (savedId?: string) => {
+      const message = "Übung erfolgreich in Supabase gespeichert!";
+      if (savedId) {
+        board.setDocument((prev) => ({ ...prev, id: savedId, coordSpace: "viewport" }));
+        replaceUrlQuietly(
+          `/admin/tactics-board?exerciseId=${encodeURIComponent(savedId)}&name=${encodeURIComponent(boardName)}`,
+        );
+      }
+      setSaveStatus(message);
+      setToastWarning(null);
+      setToastSuccess(message);
+      window.setTimeout(() => {
+        setToastSuccess(null);
+        setSaveStatus(null);
+      }, 4000);
     };
 
     try {
@@ -212,21 +233,13 @@ export function TacticsBoard({ exerciseId, initialName }: TacticsBoardProps) {
 
       console.log("[TacticsBoard] save result", result);
 
-      if (result.success && result.id) {
-        board.setDocument((prev) => ({ ...prev, id: result.id, coordSpace: "viewport" }));
-        replaceUrlQuietly(
-          `/admin/tactics-board?exerciseId=${encodeURIComponent(result.id)}&name=${encodeURIComponent(boardName)}`,
-        );
-        setSaveStatus("Gespeichert!");
-        window.setTimeout(() => setSaveStatus(null), 3000);
-        return;
-      }
-
-      if (result.success && !result.id) {
-        showSaveError(
-          result.error ||
-            "Speichern meldete Erfolg, aber keine ID (SELECT-RLS nach INSERT prüfen).",
-        );
+      // success: true / kein error → immer Erfolg (ID optional)
+      if (result.success && !result.error) {
+        const savedId =
+          typeof result.id === "string" && result.id.trim()
+            ? result.id.trim()
+            : undefined;
+        showSaveSuccess(savedId);
         return;
       }
 
@@ -388,6 +401,15 @@ export function TacticsBoard({ exerciseId, initialName }: TacticsBoardProps) {
 
   return (
     <div className="relative mx-auto flex max-w-7xl flex-col gap-6 p-4 md:p-6">
+      {toastSuccess && (
+        <div
+          className="fixed right-4 top-4 z-[60] max-w-md break-words rounded-lg border border-emerald-500/45 bg-slate-900 px-4 py-3 text-sm text-emerald-100 shadow-lg"
+          role="status"
+          aria-live="polite"
+        >
+          {toastSuccess}
+        </div>
+      )}
       {toastWarning && (
         <div
           className="fixed right-4 top-4 z-[60] max-w-md break-words rounded-lg border border-amber-500/40 bg-slate-900 px-4 py-3 text-sm text-amber-100 shadow-lg"

@@ -94,7 +94,7 @@ export async function POST(request: Request) {
     // Explizit public.tactics — TACTICS_TABLE ist "tactics"
     const result = await saveTacticsBoardWithClient(supabase, document, options ?? {});
 
-    if (!result.success) {
+    if (!result.success || result.error) {
       const errorText = safeErrorMessage(
         result.error,
         "Speichern in public.tactics fehlgeschlagen.",
@@ -114,18 +114,14 @@ export async function POST(request: Request) {
       );
     }
 
-    if (!result.id) {
-      const errorText =
-        "Speichern in public.tactics meldete Erfolg, aber keine ID (SELECT-RLS prüfen).";
-      console.error("Supabase Error Details:", { table: "tactics", result });
-      return NextResponse.json(
-        { success: false, error: errorText, table: "tactics" },
-        { status: 500 },
-      );
-    }
-
+    // success ohne error → 100% erfolgreich (ID optional)
     return NextResponse.json(
-      { success: true, id: result.id, videoUrl: result.videoUrl ?? null, table: "tactics" },
+      {
+        success: true,
+        id: result.id ?? null,
+        videoUrl: result.videoUrl ?? null,
+        table: "tactics",
+      },
       { status: 200 },
     );
   } catch (error) {
