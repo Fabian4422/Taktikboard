@@ -270,6 +270,22 @@ export function useTacticsBoard(initialDocument?: TacticsBoardDocument) {
     stampMemoryRef.current = null;
   }, []);
 
+  /**
+   * Selektion setzen. Bei Abwahl (null) immer zurück auf Auswählen —
+   * sonst bleibt nach Stempel-/Drehen-Memory ein Platzier-Werkzeug aktiv.
+   */
+  const selectElement = useCallback(
+    (id: string | null) => {
+      setSelectedId(id);
+      if (id === null) {
+        clearStampMemory();
+        setLineDraft(null);
+        setToolMode("select");
+      }
+    },
+    [clearStampMemory],
+  );
+
   /** Speichert angepasste Objekt-Eigenschaften als Stempel-Vorlage und aktiviert das Werkzeug. */
   const rememberStampFromElement = useCallback((el: BoardElement) => {
     if (LINE_TYPES.has(el.type) || el.points) return;
@@ -504,8 +520,8 @@ export function useTacticsBoard(initialDocument?: TacticsBoardDocument) {
   const deleteSelected = useCallback(() => {
     if (!selectedId) return;
     mutateElementWithCascade(selectedId, () => null);
-    setSelectedId(null);
-  }, [mutateElementWithCascade, selectedId]);
+    selectElement(null);
+  }, [mutateElementWithCascade, selectElement, selectedId]);
 
   const copySelected = useCallback(() => {
     if (!selectedId || isPlaying) return false;
@@ -832,7 +848,7 @@ export function useTacticsBoard(initialDocument?: TacticsBoardDocument) {
     setToolMode: selectTool,
     selectTool,
     selectedId,
-    setSelectedId,
+    setSelectedId: selectElement,
     isPlaying,
     isPaused,
     playbackProgress,

@@ -652,7 +652,10 @@ export function TacticsBoard({ exerciseId, initialName }: TacticsBoardProps) {
         <ObjectInspector
           element={board.selectedElement}
           onUpdate={board.updateSelectedElement}
-          onClose={() => board.setSelectedId(null)}
+          onClose={() => {
+            board.setSelectedId(null);
+            setInspectorOpen(false);
+          }}
           onRotate={board.rotateSelected}
           onDelete={board.deleteSelected}
         />
