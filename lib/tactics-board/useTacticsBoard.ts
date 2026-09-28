@@ -46,6 +46,12 @@ const LINE_TYPES = new Set(["pass-line", "run-path", "dribble-path", "guide-line
 const CASCADE_POSITION_EPS = 1.5;
 const CASCADE_ROTATION_EPS = 1;
 const CASCADE_SCALE_EPS = 0.01;
+const HISTORY_LIMIT = 20;
+
+type BoardHistoryEntry = {
+  keyframes: Keyframe[];
+  currentStepIndex: number;
+};
 
 function cloneBoardElement(el: BoardElement): BoardElement {
   return {
@@ -220,6 +226,11 @@ export function useTacticsBoard(initialDocument?: TacticsBoardDocument) {
     scale?: number;
     rotation?: number;
   } | null>(null);
+  const pastHistoryRef = useRef<BoardHistoryEntry[]>([]);
+  const futureHistoryRef = useRef<BoardHistoryEntry[]>([]);
+  const applyingHistoryRef = useRef(false);
+  const lastHistoryRecordAtRef = useRef(0);
+  const [historyTick, setHistoryTick] = useState(0);
 
   const animationRef = useRef<number | null>(null);
   const playbackRateRef = useRef(playbackRate);
@@ -228,6 +239,73 @@ export function useTacticsBoard(initialDocument?: TacticsBoardDocument) {
   playbackRateRef.current = playbackRate;
 
   const currentKeyframe = document.keyframes[currentStepIndex] ?? document.keyframes[0];
+
+  const takeHistorySnapshot = useCallback(
+    (): BoardHistoryEntry => ({
+      keyframes: document.keyframes.map((kf) => deepCloneKeyframe(kf)),
+      currentStepIndex,
+    }),
+    [currentStepIndex, document.keyframes],
+  );
+
+  /** Speichert den aktuellen Canvas-Zustand (max. 20) vor einer Änderung. */
+  const recordHistory = useCallback(() => {
+    if (applyingHistoryRef.current) return;
+    const now = Date.now();
+    // Schnelle Folgeänderungen (z. B. Tippen) zu einem Undo-Schritt zusammenfassen
+    if (now - lastHistoryRecordAtRef.current < 350 && pastHistoryRef.current.length > 0) {
+      return;
+    }
+    lastHistoryRecordAtRef.current = now;
+    pastHistoryRef.current = [...pastHistoryRef.current, takeHistorySnapshot()].slice(
+      -HISTORY_LIMIT,
+    );
+    futureHistoryRef.current = [];
+    setHistoryTick((t) => t + 1);
+  }, [takeHistorySnapshot]);
+
+  const applyHistoryEntry = useCallback((entry: BoardHistoryEntry) => {
+    applyingHistoryRef.current = true;
+    setDocument((prev) => ({
+      ...prev,
+      keyframes: entry.keyframes.map((kf) => deepCloneKeyframe(kf)),
+    }));
+    setCurrentStepIndex(
+      Math.min(entry.currentStepIndex, Math.max(0, entry.keyframes.length - 1)),
+    );
+    setSelectedId(null);
+    setLineDraft(null);
+    setToolMode("select");
+    stampMemoryRef.current = null;
+    applyingHistoryRef.current = false;
+    setHistoryTick((t) => t + 1);
+  }, []);
+
+  const undo = useCallback(() => {
+    if (isPlaying || pastHistoryRef.current.length === 0) return false;
+    const previous = pastHistoryRef.current[pastHistoryRef.current.length - 1];
+    pastHistoryRef.current = pastHistoryRef.current.slice(0, -1);
+    futureHistoryRef.current = [...futureHistoryRef.current, takeHistorySnapshot()].slice(
+      -HISTORY_LIMIT,
+    );
+    applyHistoryEntry(previous);
+    return true;
+  }, [applyHistoryEntry, isPlaying, takeHistorySnapshot]);
+
+  const redo = useCallback(() => {
+    if (isPlaying || futureHistoryRef.current.length === 0) return false;
+    const next = futureHistoryRef.current[futureHistoryRef.current.length - 1];
+    futureHistoryRef.current = futureHistoryRef.current.slice(0, -1);
+    pastHistoryRef.current = [...pastHistoryRef.current, takeHistorySnapshot()].slice(
+      -HISTORY_LIMIT,
+    );
+    applyHistoryEntry(next);
+    return true;
+  }, [applyHistoryEntry, isPlaying, takeHistorySnapshot]);
+
+  const canUndo = pastHistoryRef.current.length > 0 && !isPlaying;
+  const canRedo = futureHistoryRef.current.length > 0 && !isPlaying;
+  void historyTick;
 
   useEffect(() => {
     if (!isPlaying && !isPaused) {
@@ -238,6 +316,7 @@ export function useTacticsBoard(initialDocument?: TacticsBoardDocument) {
 
   const mutateElementWithCascade = useCallback(
     (elementId: string, mutate: (el: BoardElement) => BoardElement | null) => {
+      recordHistory();
       setDocument((prev) => {
         const current = findElement(prev.keyframes[currentStepIndex]?.elements ?? [], elementId);
         if (!current) return prev;
@@ -253,17 +332,18 @@ export function useTacticsBoard(initialDocument?: TacticsBoardDocument) {
         };
       });
     },
-    [currentStepIndex],
+    [currentStepIndex, recordHistory],
   );
 
   const addElementWithCascade = useCallback(
     (element: BoardElement) => {
+      recordHistory();
       setDocument((prev) => ({
         ...prev,
         keyframes: applyCascadingElementAdd(prev.keyframes, currentStepIndex, element),
       }));
     },
-    [currentStepIndex],
+    [currentStepIndex, recordHistory],
   );
 
   const clearStampMemory = useCallback(() => {
@@ -393,6 +473,22 @@ export function useTacticsBoard(initialDocument?: TacticsBoardDocument) {
     [isPlaying, mutateElementWithCascade],
   );
 
+  const handleLinePointsChange = useCallback(
+    (id: string, points: number[]) => {
+      if (isPlaying) return;
+      mutateElementWithCascade(id, (el) => {
+        if (!el.points) return el;
+        return {
+          ...el,
+          x: points[0] ?? el.x,
+          y: points[1] ?? el.y,
+          points: [...points],
+        };
+      });
+    },
+    [isPlaying, mutateElementWithCascade],
+  );
+
   const handleFieldClick = useCallback(
     (x: number, y: number) => {
       if (isPlaying || toolMode === "select") return;
@@ -490,6 +586,7 @@ export function useTacticsBoard(initialDocument?: TacticsBoardDocument) {
   );
 
   const addKeyframe = useCallback(() => {
+    recordHistory();
     setDocument((prev) => {
       const last = prev.keyframes[prev.keyframes.length - 1];
       const newIndex = prev.keyframes.length + 1;
@@ -503,18 +600,19 @@ export function useTacticsBoard(initialDocument?: TacticsBoardDocument) {
       setCurrentStepIndex(keyframes.length - 1);
       return { ...prev, keyframes };
     });
-  }, []);
+  }, [recordHistory]);
 
   const deleteKeyframe = useCallback(
     (index: number) => {
       if (document.keyframes.length <= 1) return;
+      recordHistory();
       setDocument((prev) => ({
         ...prev,
         keyframes: prev.keyframes.filter((_, i) => i !== index),
       }));
       setCurrentStepIndex((i) => Math.min(i, document.keyframes.length - 2));
     },
-    [document.keyframes.length],
+    [document.keyframes.length, recordHistory],
   );
 
   const deleteSelected = useCallback(() => {
@@ -604,6 +702,7 @@ export function useTacticsBoard(initialDocument?: TacticsBoardDocument) {
     const clamped = Math.max(25, Math.min(200, Math.round(percent)));
     setPlayerScalePercentState(clamped);
     const scale = clamped / 100;
+    recordHistory();
     setDocument((doc) => ({
       ...doc,
       keyframes: doc.keyframes.map((kf) => ({
@@ -617,7 +716,7 @@ export function useTacticsBoard(initialDocument?: TacticsBoardDocument) {
     if (memory && isPlayerType(memory.type)) {
       stampMemoryRef.current = { ...memory, scale };
     }
-  }, []);
+  }, [recordHistory]);
 
   const setKeyframeSpeed = useCallback((index: number, speed: KeyframeSpeed) => {
     if (isPlaying) return;
@@ -649,6 +748,7 @@ export function useTacticsBoard(initialDocument?: TacticsBoardDocument) {
       window.confirm("Wirklich alles löschen? Alle Spieler, Materialien und Linien werden entfernt.");
     if (!confirmed) return;
 
+    recordHistory();
     setDocument((prev) => ({
       ...prev,
       coordSpace: "viewport",
@@ -667,7 +767,7 @@ export function useTacticsBoard(initialDocument?: TacticsBoardDocument) {
     if (animationRef.current) {
       cancelAnimationFrame(animationRef.current);
     }
-  }, [clearStampMemory, isPlaying]);
+  }, [clearStampMemory, isPlaying, recordHistory]);
 
   const changeFieldView = useCallback((next: FieldView) => {
     // Nur Viewport wechseln — keine Drehung, keine Koordinaten-Änderung.
@@ -687,6 +787,9 @@ export function useTacticsBoard(initialDocument?: TacticsBoardDocument) {
     setLineDraft(null);
     clearStampMemory();
     setToolMode("select");
+    pastHistoryRef.current = [];
+    futureHistoryRef.current = [];
+    setHistoryTick((t) => t + 1);
     timelineElapsedRef.current = 0;
     lastFrameRef.current = null;
     if (animationRef.current) {
@@ -803,6 +906,17 @@ export function useTacticsBoard(initialDocument?: TacticsBoardDocument) {
       }
 
       const mod = e.ctrlKey || e.metaKey;
+      if (mod && (e.key === "z" || e.key === "Z")) {
+        e.preventDefault();
+        if (e.shiftKey) redo();
+        else undo();
+        return;
+      }
+      if (mod && (e.key === "y" || e.key === "Y")) {
+        e.preventDefault();
+        redo();
+        return;
+      }
       if (mod && (e.key === "c" || e.key === "C")) {
         if (selectedId) {
           e.preventDefault();
@@ -831,7 +945,7 @@ export function useTacticsBoard(initialDocument?: TacticsBoardDocument) {
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [copySelected, deleteSelected, pasteClipboard, rotateSelected, selectedId]);
+  }, [copySelected, deleteSelected, pasteClipboard, redo, rotateSelected, selectedId, undo]);
 
   const elementsToRender = isPlaying || isPaused ? displayElements : currentKeyframe.elements;
   const selectedElement = selectedId
@@ -858,6 +972,7 @@ export function useTacticsBoard(initialDocument?: TacticsBoardDocument) {
     handleElementMove,
     handleElementTransform,
     handleLineMove,
+    handleLinePointsChange,
     handleFieldClick,
     addKeyframe,
     deleteKeyframe,
@@ -865,6 +980,10 @@ export function useTacticsBoard(initialDocument?: TacticsBoardDocument) {
     copySelected,
     pasteClipboard,
     rotateSelected,
+    undo,
+    redo,
+    canUndo,
+    canRedo,
     fieldView,
     setFieldView: changeFieldView,
     fieldRotation,

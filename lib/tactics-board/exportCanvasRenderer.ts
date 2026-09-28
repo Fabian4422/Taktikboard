@@ -25,8 +25,10 @@ import {
 import {
   ELEMENT_META,
   arrowHeadPoints,
-  buildWavePoints,
+  getLineRenderPoints,
   getPlayerRadius,
+  lineArrowAnchor,
+  parseLineGeometry,
 } from "./elementStyles";
 import {
   BALL_CENTER_PENTAGON,
@@ -357,15 +359,25 @@ function drawBall(ctx: ExportDrawContext) {
 function drawLineElement(ctx: ExportDrawContext, element: BoardElement) {
   const points = element.points;
   if (!points || points.length < 4) return;
-  const [x1, y1, x2, y2] = points;
+  const geo = parseLineGeometry(points);
+  if (!geo) return;
   const meta = ELEMENT_META[element.type];
   const isPass = element.type === "pass-line";
   const isRun = element.type === "run-path";
   const isDribble = element.type === "dribble-path";
   const isGuide = element.type === "guide-line";
   const showArrow = isPass || isRun || isDribble;
-  const linePoints = isDribble ? buildWavePoints(x1, y1, x2, y2) : [x1, y1, x2, y2];
-  const arrowPoints = showArrow ? arrowHeadPoints(x1, y1, x2, y2, isPass || isDribble ? 14 : 12) : [];
+  const linePoints = getLineRenderPoints(element.type, points);
+  const arrowAnchor = lineArrowAnchor(geo);
+  const arrowPoints = showArrow
+    ? arrowHeadPoints(
+        arrowAnchor.x1,
+        arrowAnchor.y1,
+        arrowAnchor.x2,
+        arrowAnchor.y2,
+        isPass || isDribble ? 14 : 12,
+      )
+    : [];
 
   ctx.strokeStyle = meta.color;
   ctx.lineWidth = isPass ? 3.5 : 3;

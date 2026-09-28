@@ -12,6 +12,10 @@ interface ToolbarProps {
   onDeleteSelected: () => void;
   onCopySelected?: () => void;
   onPasteClipboard?: () => void;
+  onUndo?: () => void;
+  onRedo?: () => void;
+  canUndo?: boolean;
+  canRedo?: boolean;
   hasSelection: boolean;
   fieldView: FieldView;
   fieldRotation: FieldRotation;
@@ -141,6 +145,10 @@ export function Toolbar({
   onDeleteSelected,
   onCopySelected,
   onPasteClipboard,
+  onUndo,
+  onRedo,
+  canUndo = false,
+  canRedo = false,
   hasSelection,
   fieldView,
   fieldRotation,
@@ -159,6 +167,54 @@ export function Toolbar({
 
   return (
     <aside className="flex w-full flex-col gap-4 lg:w-56 lg:shrink-0">
+      <div>
+        <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
+          Verlauf
+        </h3>
+        <div className="flex gap-2">
+          <button
+            type="button"
+            onClick={onUndo}
+            disabled={!canUndo || !onUndo}
+            title="Rückgängig (Ctrl+Z)"
+            aria-label="Rückgängig"
+            className="flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-slate-600 bg-slate-800 px-3 py-2 text-sm text-slate-200 transition hover:border-slate-500 hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:border-slate-600 disabled:hover:bg-slate-800"
+          >
+            <svg viewBox="0 0 16 16" className="h-4 w-4 shrink-0" aria-hidden>
+              <path
+                d="M6.5 3.5 2.5 7l4 3.5M3 7h6.5a4 4 0 1 1 0 8H8"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.6"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+            <span className="truncate">Rückgängig</span>
+          </button>
+          <button
+            type="button"
+            onClick={onRedo}
+            disabled={!canRedo || !onRedo}
+            title="Wiederholen (Ctrl+Y)"
+            aria-label="Wiederholen"
+            className="flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-slate-600 bg-slate-800 px-3 py-2 text-sm text-slate-200 transition hover:border-slate-500 hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:border-slate-600 disabled:hover:bg-slate-800"
+          >
+            <svg viewBox="0 0 16 16" className="h-4 w-4 shrink-0" aria-hidden>
+              <path
+                d="M9.5 3.5 13.5 7l-4 3.5M13 7H6.5a4 4 0 1 0 0 8H8"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.6"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+            <span className="truncate">Wiederholen</span>
+          </button>
+        </div>
+      </div>
+
       <div>
         <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
           Werkzeug

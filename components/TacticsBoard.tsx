@@ -505,6 +505,14 @@ export function TacticsBoard({ exerciseId, initialName }: TacticsBoardProps) {
             onPasteClipboard={() => {
               board.pasteClipboard();
             }}
+            onUndo={() => {
+              board.undo();
+            }}
+            onRedo={() => {
+              board.redo();
+            }}
+            canUndo={board.canUndo}
+            canRedo={board.canRedo}
             hasSelection={Boolean(board.selectedId)}
             fieldView={board.fieldView}
             fieldRotation={board.fieldRotation}
@@ -572,6 +580,7 @@ export function TacticsBoard({ exerciseId, initialName }: TacticsBoardProps) {
                 }}
                 onElementMove={board.handleElementMove}
                 onLineMove={board.handleLineMove}
+                onLinePointsChange={board.handleLinePointsChange}
                 onFieldClick={board.handleFieldClick}
                 onElementTransform={board.handleElementTransform}
                 onDraggingChange={(dragging, elementId) => {

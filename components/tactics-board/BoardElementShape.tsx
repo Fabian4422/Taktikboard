@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Circle, Group, Line, Rect, Text, Transformer } from "react-konva";
 import type Konva from "konva";
 import type { BoardElement } from "@/lib/tactics-board/types";
@@ -18,8 +18,13 @@ import {
 import {
   ELEMENT_META,
   arrowHeadPoints,
-  buildWavePoints,
+  defaultBendControl,
+  getLineRenderPoints,
   getPlayerRadius,
+  lineArrowAnchor,
+  lineGeometryToPoints,
+  parseLineGeometry,
+  type LineGeometry,
 } from "@/lib/tactics-board/elementStyles";
 import {
   ConeIcon,
@@ -42,6 +47,8 @@ interface BoardElementShapeProps {
   onDragStart?: () => void;
   onDragEnd: (x: number, y: number) => void;
   onLineDragEnd: (dx: number, dy: number) => void;
+  /** Endpunkte / Kontrollpunkt einer Linie nachziehen */
+  onLinePointsChange?: (points: number[]) => void;
   onTransformEnd?: (x: number, y: number, rotation: number) => void;
 }
 
@@ -58,6 +65,7 @@ export function BoardElementShape({
   onDragStart,
   onDragEnd,
   onLineDragEnd,
+  onLinePointsChange,
   onTransformEnd,
 }: BoardElementShapeProps) {
   const meta = ELEMENT_META[element.type];
@@ -68,9 +76,15 @@ export function BoardElementShape({
   const lastPointerRef = useRef<{ x: number; y: number } | null>(null);
   const didDragRef = useRef(false);
   const holdTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const handleDraggingRef = useRef(false);
+  const [draftPoints, setDraftPoints] = useState<number[] | null>(null);
   const canRotate = isRotatable(element.type);
   const elementScale = getElementScale(element);
   const uprightLabelRotation = -(labelCounterRotation + (element.rotation ?? 0));
+
+  useEffect(() => {
+    if (!handleDraggingRef.current) setDraftPoints(null);
+  }, [element.points, element.id]);
 
   useEffect(() => {
     const transformer = transformerRef.current as {
@@ -194,52 +208,223 @@ export function BoardElementShape({
   };
 
   if (element.points && element.points.length >= 4) {
-    const [x1, y1, x2, y2] = element.points;
+    const activePoints = draftPoints ?? element.points;
+    const geo = parseLineGeometry(activePoints);
+    if (!geo) return null;
+
     const isPass = element.type === "pass-line";
     const isRun = element.type === "run-path";
     const isDribble = element.type === "dribble-path";
     const isGuide = element.type === "guide-line";
     const showArrow = isPass || isRun || isDribble;
+    const showBendHandle = isDribble || geo.curved;
 
-    const linePoints = isDribble ? buildWavePoints(x1, y1, x2, y2) : [x1, y1, x2, y2];
+    const bend =
+      geo.curved && geo.cx != null && geo.cy != null
+        ? { x: geo.cx, y: geo.cy }
+        : defaultBendControl(geo.x1, geo.y1, geo.x2, geo.y2);
+
+    const linePoints = getLineRenderPoints(element.type, activePoints);
+    const arrowAnchor = lineArrowAnchor(geo);
     const arrowPoints = showArrow
-      ? arrowHeadPoints(x1, y1, x2, y2, isPass || isDribble ? 14 : 12)
+      ? arrowHeadPoints(
+          arrowAnchor.x1,
+          arrowAnchor.y1,
+          arrowAnchor.x2,
+          arrowAnchor.y2,
+          isPass || isDribble ? 14 : 12,
+        )
       : [];
 
+    const commitGeometry = (next: LineGeometry) => {
+      const points = lineGeometryToPoints(next);
+      setDraftPoints(points);
+      onLinePointsChange?.(points);
+    };
+
+    const beginHandleDrag = (e: Konva.KonvaEventObject<DragEvent>) => {
+      e.cancelBubble = true;
+      handleDraggingRef.current = true;
+      didDragRef.current = true;
+      onDragStart?.();
+    };
+
+    const endHandleDrag = () => {
+      handleDraggingRef.current = false;
+      pointerStartRef.current = null;
+      // Draft bleibt bis element.points nachzieht
+    };
+
     return (
-      <Group
-        {...selectHandlers}
-        draggable={draggable}
-        onDragEnd={(e: Konva.KonvaEventObject<DragEvent>) => {
-          const node = e.target;
-          clearHoldTimer();
-          onLineDragEnd(node.x(), node.y());
-          node.position({ x: 0, y: 0 });
-          pointerStartRef.current = null;
-        }}
-      >
-        <Line
-          points={linePoints}
-          stroke={meta.color}
-          strokeWidth={selected ? 4 : isPass ? 3.5 : 3}
-          dash={isGuide ? [10, 8] : undefined}
-          lineCap="round"
-          lineJoin="round"
-          hitStrokeWidth={16}
-        />
-        {showArrow && (
+      <Group>
+        <Group
+          {...selectHandlers}
+          draggable={draggable}
+          onDragEnd={(e: Konva.KonvaEventObject<DragEvent>) => {
+            if (handleDraggingRef.current) return;
+            const node = e.target;
+            clearHoldTimer();
+            onLineDragEnd(node.x(), node.y());
+            node.position({ x: 0, y: 0 });
+            pointerStartRef.current = null;
+          }}
+        >
           <Line
-            points={arrowPoints}
+            points={linePoints}
             stroke={meta.color}
             strokeWidth={selected ? 4 : isPass ? 3.5 : 3}
+            dash={isGuide ? [10, 8] : undefined}
             lineCap="round"
+            lineJoin="round"
+            hitStrokeWidth={16}
+          />
+          {showArrow && (
+            <Line
+              points={arrowPoints}
+              stroke={meta.color}
+              strokeWidth={selected ? 4 : isPass ? 3.5 : 3}
+              lineCap="round"
+            />
+          )}
+        </Group>
+        {selected && showBendHandle && (
+          <Line
+            points={[geo.x1, geo.y1, bend.x, bend.y, geo.x2, geo.y2]}
+            stroke="#38bdf8"
+            strokeWidth={1}
+            dash={[4, 4]}
+            opacity={0.55}
+            listening={false}
           />
         )}
         {selected && (
-          <Circle x={x1} y={y1} radius={6} fill="white" stroke="#0ea5e9" strokeWidth={2} />
+          <Circle
+            name="board-element"
+            x={geo.x1}
+            y={geo.y1}
+            radius={7}
+            fill="white"
+            stroke="#0ea5e9"
+            strokeWidth={2}
+            draggable={draggable}
+            dragDistance={2}
+            onMouseDown={(e: Konva.KonvaEventObject<MouseEvent>) => {
+              e.cancelBubble = true;
+            }}
+            onTouchStart={(e: Konva.KonvaEventObject<TouchEvent>) => {
+              e.cancelBubble = true;
+            }}
+            onDragStart={beginHandleDrag}
+            onDragMove={(e: Konva.KonvaEventObject<DragEvent>) => {
+              e.cancelBubble = true;
+              const nx = e.target.x();
+              const ny = e.target.y();
+              const next: LineGeometry = geo.curved
+                ? { ...geo, x1: nx, y1: ny }
+                : { x1: nx, y1: ny, x2: geo.x2, y2: geo.y2, curved: false };
+              setDraftPoints(lineGeometryToPoints(next));
+            }}
+            onDragEnd={(e: Konva.KonvaEventObject<DragEvent>) => {
+              e.cancelBubble = true;
+              const nx = e.target.x();
+              const ny = e.target.y();
+              const next: LineGeometry = geo.curved
+                ? { ...geo, x1: nx, y1: ny }
+                : { x1: nx, y1: ny, x2: geo.x2, y2: geo.y2, curved: false };
+              commitGeometry(next);
+              endHandleDrag();
+            }}
+          />
         )}
         {selected && (
-          <Circle x={x2} y={y2} radius={6} fill="white" stroke="#0ea5e9" strokeWidth={2} />
+          <Circle
+            name="board-element"
+            x={geo.x2}
+            y={geo.y2}
+            radius={7}
+            fill="white"
+            stroke="#0ea5e9"
+            strokeWidth={2}
+            draggable={draggable}
+            dragDistance={2}
+            onMouseDown={(e: Konva.KonvaEventObject<MouseEvent>) => {
+              e.cancelBubble = true;
+            }}
+            onTouchStart={(e: Konva.KonvaEventObject<TouchEvent>) => {
+              e.cancelBubble = true;
+            }}
+            onDragStart={beginHandleDrag}
+            onDragMove={(e: Konva.KonvaEventObject<DragEvent>) => {
+              e.cancelBubble = true;
+              const nx = e.target.x();
+              const ny = e.target.y();
+              const next: LineGeometry = geo.curved
+                ? { ...geo, x2: nx, y2: ny }
+                : { x1: geo.x1, y1: geo.y1, x2: nx, y2: ny, curved: false };
+              setDraftPoints(lineGeometryToPoints(next));
+            }}
+            onDragEnd={(e: Konva.KonvaEventObject<DragEvent>) => {
+              e.cancelBubble = true;
+              const nx = e.target.x();
+              const ny = e.target.y();
+              const next: LineGeometry = geo.curved
+                ? { ...geo, x2: nx, y2: ny }
+                : { x1: geo.x1, y1: geo.y1, x2: nx, y2: ny, curved: false };
+              commitGeometry(next);
+              endHandleDrag();
+            }}
+          />
+        )}
+        {selected && showBendHandle && (
+          <Circle
+            name="board-element"
+            x={bend.x}
+            y={bend.y}
+            radius={7}
+            fill="#38bdf8"
+            stroke="#e0f2fe"
+            strokeWidth={2}
+            draggable={draggable}
+            dragDistance={2}
+            onMouseDown={(e: Konva.KonvaEventObject<MouseEvent>) => {
+              e.cancelBubble = true;
+            }}
+            onTouchStart={(e: Konva.KonvaEventObject<TouchEvent>) => {
+              e.cancelBubble = true;
+            }}
+            onDragStart={beginHandleDrag}
+            onDragMove={(e: Konva.KonvaEventObject<DragEvent>) => {
+              e.cancelBubble = true;
+              const nx = e.target.x();
+              const ny = e.target.y();
+              setDraftPoints(
+                lineGeometryToPoints({
+                  x1: geo.x1,
+                  y1: geo.y1,
+                  cx: nx,
+                  cy: ny,
+                  x2: geo.x2,
+                  y2: geo.y2,
+                  curved: true,
+                }),
+              );
+            }}
+            onDragEnd={(e: Konva.KonvaEventObject<DragEvent>) => {
+              e.cancelBubble = true;
+              const nx = e.target.x();
+              const ny = e.target.y();
+              commitGeometry({
+                x1: geo.x1,
+                y1: geo.y1,
+                cx: nx,
+                cy: ny,
+                x2: geo.x2,
+                y2: geo.y2,
+                curved: true,
+              });
+              endHandleDrag();
+            }}
+          />
         )}
       </Group>
     );

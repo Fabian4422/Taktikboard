@@ -29,6 +29,7 @@ interface FieldCanvasProps {
   onSelect: (id: string | null) => void;
   onElementMove: (id: string, x: number, y: number) => void;
   onLineMove: (id: string, dx: number, dy: number) => void;
+  onLinePointsChange?: (id: string, points: number[]) => void;
   onFieldClick: (x: number, y: number) => void;
   onElementTransform?: (id: string, x: number, y: number, rotation: number) => void;
   /** true während aktivem Drag — Panel ausblenden; optional elementId für Highlight ohne Panel */
@@ -195,6 +196,7 @@ export function FieldCanvas({
   onSelect,
   onElementMove,
   onLineMove,
+  onLinePointsChange,
   onFieldClick,
   onElementTransform,
   onDraggingChange,
@@ -423,6 +425,10 @@ export function FieldCanvas({
                     onLineDragEnd={(dx, dy) => {
                       onDraggingChange?.(false);
                       onLineMove(el.id, dx, dy);
+                    }}
+                    onLinePointsChange={(points) => {
+                      onDraggingChange?.(false);
+                      onLinePointsChange?.(el.id, points);
                     }}
                     onTransformEnd={(x, y, rotationDeg) =>
                       onElementTransform?.(el.id, x, y, rotationDeg)
