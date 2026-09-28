@@ -455,8 +455,10 @@ export function useTacticsBoard(initialDocument?: TacticsBoardDocument) {
       }
 
       addElementWithCascade(base);
-      // Stempel-Modus: Objekt nicht selektieren — Panel bleibt zu, weiter stempeln
-      setSelectedId(null);
+      // Nach einmaligem Platzieren zurück auf Auswählen — kein versehentliches Mehrfach-Stempeln
+      clearStampMemory();
+      setToolMode("select");
+      setSelectedId(base.id);
     },
     [
       addElementWithCascade,

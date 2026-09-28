@@ -85,13 +85,22 @@ export function ObjectInspector({
   const [fontSizeDraft, setFontSizeDraft] = useState(() =>
     String(getTextBoxFontSize(element)),
   );
+  const xFocusedRef = useRef(false);
+  const yFocusedRef = useRef(false);
   const durationFocusedRef = useRef(false);
   const fontSizeFocusedRef = useRef(false);
 
   useEffect(() => {
+    xFocusedRef.current = false;
+    yFocusedRef.current = false;
     setXDraft(String(Math.round(element.x)));
     setYDraft(String(Math.round(element.y)));
-  }, [element.id, element.x, element.y]);
+  }, [element.id]);
+
+  useEffect(() => {
+    if (!xFocusedRef.current) setXDraft(String(Math.round(element.x)));
+    if (!yFocusedRef.current) setYDraft(String(Math.round(element.y)));
+  }, [element.x, element.y]);
 
   useEffect(() => {
     setTextDraft(element.text ?? DEFAULT_TEXT_BOX_TEXT);
@@ -112,17 +121,30 @@ export function ObjectInspector({
     return Number.isFinite(parsed) ? parsed : fallback;
   };
 
-  const commitAxis = (axis: "x" | "y", raw: string) => {
+  /** Sofortiges Update bei gültiger Zahl; leere Zwischenstände nur im Draft. */
+  const applyAxisDraft = (axis: "x" | "y", raw: string, normalize: boolean) => {
     if (raw.trim() === "") {
-      onUpdate({ [axis]: 0 });
-      if (axis === "x") setXDraft("0");
-      else setYDraft("0");
+      if (normalize) {
+        onUpdate({ [axis]: 0 });
+        if (axis === "x") setXDraft("0");
+        else setYDraft("0");
+      }
       return;
     }
-    const next = parseNumber(raw, axis === "x" ? element.x : element.y);
-    onUpdate({ [axis]: next });
-    if (axis === "x") setXDraft(String(Math.round(next)));
-    else setYDraft(String(Math.round(next)));
+    const parsed = Number.parseFloat(raw.replace(",", "."));
+    if (!Number.isFinite(parsed)) {
+      if (normalize) {
+        const fallback = axis === "x" ? element.x : element.y;
+        if (axis === "x") setXDraft(String(Math.round(fallback)));
+        else setYDraft(String(Math.round(fallback)));
+      }
+      return;
+    }
+    onUpdate({ [axis]: parsed });
+    if (normalize) {
+      if (axis === "x") setXDraft(String(Math.round(parsed)));
+      else setYDraft(String(Math.round(parsed)));
+    }
   };
 
   const commitDuration = (raw: string) => {
@@ -193,8 +215,18 @@ export function ObjectInspector({
             type="text"
             inputMode="decimal"
             value={xDraft}
-            onChange={(e) => setXDraft(e.target.value)}
-            onBlur={() => commitAxis("x", xDraft)}
+            onChange={(e) => {
+              const raw = e.target.value;
+              setXDraft(raw);
+              applyAxisDraft("x", raw, false);
+            }}
+            onFocus={() => {
+              xFocusedRef.current = true;
+            }}
+            onBlur={() => {
+              xFocusedRef.current = false;
+              applyAxisDraft("x", xDraft, true);
+            }}
             onKeyDown={(e) => {
               if (e.key === "Enter") {
                 e.currentTarget.blur();
@@ -209,8 +241,18 @@ export function ObjectInspector({
             type="text"
             inputMode="decimal"
             value={yDraft}
-            onChange={(e) => setYDraft(e.target.value)}
-            onBlur={() => commitAxis("y", yDraft)}
+            onChange={(e) => {
+              const raw = e.target.value;
+              setYDraft(raw);
+              applyAxisDraft("y", raw, false);
+            }}
+            onFocus={() => {
+              yFocusedRef.current = true;
+            }}
+            onBlur={() => {
+              yFocusedRef.current = false;
+              applyAxisDraft("y", yDraft, true);
+            }}
             onKeyDown={(e) => {
               if (e.key === "Enter") {
                 e.currentTarget.blur();
