@@ -2,6 +2,7 @@
 
 import { Circle, Ellipse, Group, Line, Rect } from "react-konva";
 import {
+  AGILITY_LADDER,
   BALL_CENTER_PENTAGON,
   BALL_HEXAGONS,
   BALL_OUTER_PENTAGONS,
@@ -10,6 +11,7 @@ import {
   BIG_GOAL,
   CONE_TRIANGLE,
   DUMMY,
+  getAgilityLadderRungXs,
   HURDLE,
   MINI_GOAL,
   POLE,
@@ -180,6 +182,67 @@ export function HurdleIcon({ selected }: { selected: boolean }) {
         strokeWidth={1.2}
         cornerRadius={1}
       />
+    </Group>
+  );
+}
+
+/** Koordinationsleiter – zwei Längsschienen + Quersprossen (Draufsicht) */
+export function AgilityLadderIcon({ selected }: { selected: boolean }) {
+  const { halfLength, halfWidth, railStroke, rungStroke, hitPad } = AGILITY_LADDER;
+  const outline = selected ? "#38bdf8" : "#0f172a";
+  const rungXs = getAgilityLadderRungXs();
+
+  return (
+    <Group>
+      {/* Unsichtbare Hit-Fläche */}
+      <Rect
+        x={-halfLength - hitPad}
+        y={-halfWidth - hitPad}
+        width={(halfLength + hitPad) * 2}
+        height={(halfWidth + hitPad) * 2}
+        fill="transparent"
+      />
+      {/* Schienen-Umriss für Kontrast */}
+      <Line
+        points={[-halfLength, -halfWidth, halfLength, -halfWidth]}
+        stroke={outline}
+        strokeWidth={railStroke + (selected ? 1.4 : 0.8)}
+        lineCap="round"
+        {...deco}
+      />
+      <Line
+        points={[-halfLength, halfWidth, halfLength, halfWidth]}
+        stroke={outline}
+        strokeWidth={railStroke + (selected ? 1.4 : 0.8)}
+        lineCap="round"
+        {...deco}
+      />
+      {/* Gelbe / weiße Längsschienen */}
+      <Line
+        points={[-halfLength, -halfWidth, halfLength, -halfWidth]}
+        stroke="#facc15"
+        strokeWidth={railStroke}
+        lineCap="round"
+        {...deco}
+      />
+      <Line
+        points={[-halfLength, halfWidth, halfLength, halfWidth]}
+        stroke="#f8fafc"
+        strokeWidth={railStroke}
+        lineCap="round"
+        {...deco}
+      />
+      {/* Dunkle Quersprossen */}
+      {rungXs.map((x, i) => (
+        <Line
+          key={`rung-${i}`}
+          points={[x, -halfWidth, x, halfWidth]}
+          stroke={selected ? "#0ea5e9" : "#1e293b"}
+          strokeWidth={rungStroke}
+          lineCap="round"
+          {...deco}
+        />
+      ))}
     </Group>
   );
 }

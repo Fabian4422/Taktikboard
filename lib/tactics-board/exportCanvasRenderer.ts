@@ -33,6 +33,7 @@ import {
   parseLineGeometry,
 } from "./elementStyles";
 import {
+  AGILITY_LADDER,
   BALL_CENTER_PENTAGON,
   BALL_HEXAGONS,
   BALL_OUTER_PENTAGONS,
@@ -41,6 +42,7 @@ import {
   BIG_GOAL,
   CONE_TRIANGLE,
   DUMMY,
+  getAgilityLadderRungXs,
   HURDLE,
   MINI_GOAL,
   POLE,
@@ -273,6 +275,34 @@ function drawHurdle(ctx: ExportDrawContext) {
   ctx.stroke();
 }
 
+function drawAgilityLadder(ctx: ExportDrawContext) {
+  const { halfLength, halfWidth, railStroke, rungStroke } = AGILITY_LADDER;
+  const rungXs = getAgilityLadderRungXs();
+  ctx.lineCap = "round";
+
+  ctx.strokeStyle = "#0f172a";
+  ctx.lineWidth = railStroke + 0.8;
+  strokePolyline(ctx, [-halfLength, -halfWidth, halfLength, -halfWidth]);
+  ctx.stroke();
+  strokePolyline(ctx, [-halfLength, halfWidth, halfLength, halfWidth]);
+  ctx.stroke();
+
+  ctx.strokeStyle = "#facc15";
+  ctx.lineWidth = railStroke;
+  strokePolyline(ctx, [-halfLength, -halfWidth, halfLength, -halfWidth]);
+  ctx.stroke();
+  ctx.strokeStyle = "#f8fafc";
+  strokePolyline(ctx, [-halfLength, halfWidth, halfLength, halfWidth]);
+  ctx.stroke();
+
+  ctx.strokeStyle = "#1e293b";
+  ctx.lineWidth = rungStroke;
+  for (const x of rungXs) {
+    strokePolyline(ctx, [x, -halfWidth, x, halfWidth]);
+    ctx.stroke();
+  }
+}
+
 function drawCone(ctx: ExportDrawContext, color?: string) {
   const palette = getConePalette(color ?? "#f97316");
   ctx.fillStyle = palette.fill;
@@ -448,6 +478,9 @@ function drawMarkerElement(
       break;
     case "hurdle":
       drawHurdle(ctx);
+      break;
+    case "agility-ladder":
+      drawAgilityLadder(ctx);
       break;
     case "dummy":
       drawDummy(ctx, element.color);

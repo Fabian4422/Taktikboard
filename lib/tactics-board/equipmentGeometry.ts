@@ -68,6 +68,31 @@ export const HURDLE = {
   footWidth: 3.2,
 } as const;
 
+/**
+ * Koordinationsleiter – Draufsicht: zwei Längsschienen + Quersprossen.
+ * 7 Abschnitte (8 Sprossen), Länge ≈ 8,4 m bei 10 Einheiten/m.
+ */
+export const AGILITY_LADDER = {
+  /** Anzahl Sprossenabschnitte (Zwischenräume) */
+  sections: 7,
+  halfLength: 42,
+  halfWidth: 7,
+  railStroke: 2.6,
+  rungStroke: 1.9,
+  /** Hit-Pad um die Leiter herum */
+  hitPad: 3,
+} as const;
+
+/** X-Positionen der Sprossen (inkl. Enden), zentriert um 0. */
+export function getAgilityLadderRungXs(): number[] {
+  const { sections, halfLength } = AGILITY_LADDER;
+  const xs: number[] = [];
+  for (let i = 0; i <= sections; i++) {
+    xs.push(-halfLength + (i * (2 * halfLength)) / sections);
+  }
+  return xs;
+}
+
 /** Freistoßdummy – Oval mit Schulterkontur */
 export const DUMMY = {
   bodyRx: 7,

@@ -12,6 +12,7 @@ export const ELEMENT_META: Record<
   cone: { label: "Hütchen", color: "#f97316", group: "material" },
   pole: { label: "Slalomstange", color: "#f8fafc", group: "material" },
   hurdle: { label: "Hürde", color: "#facc15", group: "material" },
+  "agility-ladder": { label: "Koordinationsleiter", color: "#facc15", group: "material" },
   dummy: { label: "Freistoßdummy", color: "#eab308", group: "material" },
   "mini-goal": { label: "Mini-Tor", color: "#ffffff", group: "material" },
   "big-goal": { label: "Großtor", color: "#ffffff", group: "material" },

@@ -65,6 +65,18 @@ function MaterialIcon({ type, color }: { type: ElementType; color?: string }) {
           <rect x="11.8" y="3" width="2.2" height="6" rx="0.5" fill="#facc15" stroke="#1e293b" strokeWidth="0.6" />
         </svg>
       );
+    case "agility-ladder":
+      return (
+        <svg viewBox="0 0 18 12" className="h-4 w-4 shrink-0" aria-hidden>
+          <line x1="2" y1="2.5" x2="16" y2="2.5" stroke="#facc15" strokeWidth="1.6" strokeLinecap="round" />
+          <line x1="2" y1="9.5" x2="16" y2="9.5" stroke="#f8fafc" strokeWidth="1.6" strokeLinecap="round" />
+          <line x1="2" y1="2.5" x2="2" y2="9.5" stroke="#1e293b" strokeWidth="1.2" />
+          <line x1="5.5" y1="2.5" x2="5.5" y2="9.5" stroke="#1e293b" strokeWidth="1.2" />
+          <line x1="9" y1="2.5" x2="9" y2="9.5" stroke="#1e293b" strokeWidth="1.2" />
+          <line x1="12.5" y1="2.5" x2="12.5" y2="9.5" stroke="#1e293b" strokeWidth="1.2" />
+          <line x1="16" y1="2.5" x2="16" y2="9.5" stroke="#1e293b" strokeWidth="1.2" />
+        </svg>
+      );
     case "cone":
       return (
         <svg viewBox="0 0 14 14" className="h-4 w-4 shrink-0" aria-hidden>

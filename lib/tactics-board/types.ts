@@ -30,7 +30,8 @@ export type EquipmentType =
   | "dummy"
   | "mini-goal"
   | "big-goal"
-  | "ball";
+  | "ball"
+  | "agility-ladder";
 export type DrawingType = "pass-line" | "run-path" | "dribble-path" | "guide-line" | "text-box";
 
 export type ElementType = PlayerType | EquipmentType | DrawingType;
@@ -170,6 +171,7 @@ export const ROTATABLE_TYPES: ReadonlySet<ElementType> = new Set([
   "hurdle",
   "cone",
   "dummy",
+  "agility-ladder",
 ]);
 
 export function isRotatable(type: ElementType): boolean {

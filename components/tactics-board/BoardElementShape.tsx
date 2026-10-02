@@ -27,6 +27,7 @@ import {
   type LineGeometry,
 } from "@/lib/tactics-board/elementStyles";
 import {
+  AgilityLadderIcon,
   ConeIcon,
   DummyIcon,
   GoalIcon,
@@ -526,6 +527,16 @@ export function BoardElementShape({
         <Group>
           <Group {...commonGroupProps}>
             <HurdleIcon selected={selected} />
+          </Group>
+          {transformer}
+        </Group>
+      );
+
+    case "agility-ladder":
+      return (
+        <Group>
+          <Group {...commonGroupProps}>
+            <AgilityLadderIcon selected={selected} />
           </Group>
           {transformer}
         </Group>
