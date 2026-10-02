@@ -7,6 +7,7 @@ import { BoardElementShape } from "./BoardElementShape";
 import type { BoardElement, FieldRotation, FieldView, ToolMode } from "@/lib/tactics-board/types";
 import { DISPLAY_ASPECT_RATIO, FIELD_HEIGHT, FIELD_WIDTH, LETTERBOX_COLOR } from "@/lib/tactics-board/types";
 import {
+  getCoordOrigin,
   getEffectiveRotation,
   getFieldLayout,
   getFieldMarkingArcs,
@@ -243,6 +244,7 @@ export function FieldCanvas({
   const viewport = getFieldViewport(fieldView);
   const rotation = getEffectiveRotation(fieldView, fieldRotation);
   const rotated = getRotatedViewportSize(viewport, rotation);
+  const coordOrigin = getCoordOrigin(viewport, rotation);
 
   // Fester 16:9-Rahmen; Spielfeld zentriert per Letterbox (kein Crop, kein Stauchen).
   let stageW: number;
@@ -392,11 +394,13 @@ export function FieldCanvas({
                 </Group>
               </Group>
 
-              {/* Objekte: starres Viewport-X/Y (rechts / unten), ohne Feld-Rotationsmatrix */}
+              {/* Objekte: X/Y relativ zur Canvas-Mitte (0,0 = Anstoß / Feldmitte) */}
               <Group
                 ref={fieldGroupRef}
-                clipX={0}
-                clipY={0}
+                x={coordOrigin.x}
+                y={coordOrigin.y}
+                clipX={-coordOrigin.x}
+                clipY={-coordOrigin.y}
                 clipWidth={rotated.w}
                 clipHeight={rotated.h}
               >

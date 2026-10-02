@@ -169,6 +169,62 @@ export function getRotatedViewportSize(viewport: FieldViewport, rotation: FieldR
   return { w: viewport.w, h: viewport.h };
 }
 
+/**
+ * Visueller/mathematischer Nullpunkt: Mitte des (rotierten) Viewport-Canvas.
+ * X=0,Y=0 entspricht der Feldmitte (Anstoßpunkt bei Ganzfeld-Ansichten).
+ */
+export function getCoordOrigin(
+  viewport: FieldViewport,
+  rotation: FieldRotation,
+): { x: number; y: number } {
+  const rotated = getRotatedViewportSize(viewport, rotation);
+  return { x: rotated.w / 2, y: rotated.h / 2 };
+}
+
+/** Viewport-Absolut → zentriert (relativ zur Mitte). */
+export function viewportPointToCentered(
+  vx: number,
+  vy: number,
+  origin: { x: number; y: number },
+): { x: number; y: number } {
+  return { x: vx - origin.x, y: vy - origin.y };
+}
+
+/** Zentriert → Viewport-Absolut (für Konva/Export). */
+export function centeredPointToViewport(
+  rx: number,
+  ry: number,
+  origin: { x: number; y: number },
+): { x: number; y: number } {
+  return { x: origin.x + rx, y: origin.y + ry };
+}
+
+export function viewportElementToCentered<
+  T extends { x: number; y: number; points?: number[] },
+>(element: T, origin: { x: number; y: number }): T {
+  return {
+    ...element,
+    x: element.x - origin.x,
+    y: element.y - origin.y,
+    points: element.points
+      ? element.points.map((v, i) => (i % 2 === 0 ? v - origin.x : v - origin.y))
+      : element.points,
+  };
+}
+
+export function centeredElementToViewport<
+  T extends { x: number; y: number; points?: number[] },
+>(element: T, origin: { x: number; y: number }): T {
+  return {
+    ...element,
+    x: origin.x + element.x,
+    y: origin.y + element.y,
+    points: element.points
+      ? element.points.map((v, i) => (i % 2 === 0 ? origin.x + v : origin.y + v))
+      : element.points,
+  };
+}
+
 /** 90° im Uhrzeigersinn. */
 export function nextFieldRotation(current: FieldRotation): FieldRotation {
   return ((current + 90) % 360) as FieldRotation;
@@ -260,8 +316,9 @@ export const FIELD_VIEW_LABELS: Record<FieldView, string> = {
 };
 
 /**
- * Migriert Legacy-Feldraum-Koordinaten in den starren Viewport-Raum
+ * Migriert Legacy-Koordinaten (Feldraum → Viewport → zentriert)
  * und stellt ggf. das FIFA-Feldmaß wieder her.
+ * Zielraum: "centered" — (0,0) = Canvas-/Feldmitte.
  */
 export function migrateTacticsDocument(doc: TacticsBoardDocument): TacticsBoardDocument {
   let next: TacticsBoardDocument = { ...doc };
@@ -282,29 +339,43 @@ export function migrateTacticsDocument(doc: TacticsBoardDocument): TacticsBoardD
     next = { ...next, fieldWidth: FIELD_WIDTH, fieldHeight: FIELD_HEIGHT };
   }
 
-  if (next.coordSpace === "viewport") {
+  if (next.coordSpace === "centered") {
     return next;
   }
 
   const fieldView = next.fieldView ?? "full";
   const rotation = getEffectiveRotation(fieldView, next.fieldRotation ?? 90);
   const viewport = getFieldViewport(fieldView);
+  const origin = getCoordOrigin(viewport, rotation);
 
+  // Legacy Feldraum → Viewport-Absolut
+  if (next.coordSpace !== "viewport") {
+    next = {
+      ...next,
+      coordSpace: "viewport",
+      keyframes: next.keyframes.map((kf) => ({
+        ...kf,
+        elements: kf.elements.map((el) => {
+          const converted = fieldElementToViewport(el, viewport, rotation);
+          return {
+            ...el,
+            x: converted.x,
+            y: converted.y,
+            points: converted.points,
+            rotation: converted.rotation ?? el.rotation,
+          } satisfies BoardElement;
+        }),
+      })),
+    };
+  }
+
+  // Viewport-Absolut → zentriert (relativ zur Mitte)
   return {
     ...next,
-    coordSpace: "viewport",
+    coordSpace: "centered",
     keyframes: next.keyframes.map((kf) => ({
       ...kf,
-      elements: kf.elements.map((el) => {
-        const converted = fieldElementToViewport(el, viewport, rotation);
-        return {
-          ...el,
-          x: converted.x,
-          y: converted.y,
-          points: converted.points,
-          rotation: converted.rotation ?? el.rotation,
-        } satisfies BoardElement;
-      }),
+      elements: kf.elements.map((el) => viewportElementToCentered(el, origin)),
     })),
   };
 }

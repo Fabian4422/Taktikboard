@@ -14,6 +14,7 @@ import {
   getTextBoxLayout,
 } from "./types";
 import {
+  getCoordOrigin,
   getEffectiveRotation,
   getFieldLayout,
   getFieldMarkingArcs,
@@ -553,6 +554,7 @@ export function drawExportFrame(
   const viewport = getFieldViewport(fieldView);
   const rotation = getEffectiveRotation(fieldView, fieldRotation);
   const rotated = getRotatedViewportSize(viewport, rotation);
+  const coordOrigin = getCoordOrigin(viewport, rotation);
 
   let stageW = width;
   let stageH = height;
@@ -609,11 +611,12 @@ export function drawExportFrame(
   }
   ctx.restore();
 
-  // 2) Objekte im starren Viewport-Raum (X rechts, Y unten)
+  // 2) Objekte im zentrierten Koordinatenraum (0,0 = Canvas-/Feldmitte)
   ctx.save();
   ctx.beginPath();
   ctx.rect(0, 0, rotated.w, rotated.h);
   ctx.clip();
+  ctx.translate(coordOrigin.x, coordOrigin.y);
 
   for (const el of [...elements].sort((a, b) => {
     const aZ = a.type === "text-box" ? 1 : 0;

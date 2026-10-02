@@ -110,7 +110,7 @@ export function TacticsBoard({ exerciseId, initialName }: TacticsBoardProps) {
       keyframes: [createEmptyKeyframe(1)],
       fieldWidth: FIELD_WIDTH,
       fieldHeight: FIELD_HEIGHT,
-      coordSpace: "viewport",
+      coordSpace: "centered",
     });
     setBoardName("");
   }, [applyDocument]);
@@ -203,7 +203,7 @@ export function TacticsBoard({ exerciseId, initialName }: TacticsBoardProps) {
     const showSaveSuccess = (savedId?: string) => {
       const message = "Übung erfolgreich in Supabase gespeichert!";
       if (savedId) {
-        board.setDocument((prev) => ({ ...prev, id: savedId, coordSpace: "viewport" }));
+        board.setDocument((prev) => ({ ...prev, id: savedId, coordSpace: "centered" }));
         replaceUrlQuietly(
           `/admin/tactics-board?exerciseId=${encodeURIComponent(savedId)}&name=${encodeURIComponent(boardName)}`,
         );
@@ -226,7 +226,7 @@ export function TacticsBoard({ exerciseId, initialName }: TacticsBoardProps) {
           exerciseId,
           fieldView: board.fieldView,
           fieldRotation: board.fieldRotation,
-          coordSpace: "viewport",
+          coordSpace: "centered",
         },
         { exerciseId, name: boardName },
       );

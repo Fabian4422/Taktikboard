@@ -153,10 +153,11 @@ export interface TacticsBoardDocument {
   fieldView?: FieldView;
   fieldRotation?: FieldRotation;
   /**
-   * "viewport" = X/Y starr am Bildschirm (aktuell).
+   * "centered" = X/Y relativ zur Canvas-/Viewport-Mitte (0,0 = Anstoß / Feldmitte).
+   * "viewport" = Legacy: X/Y von oben links des Viewports.
    * "field" / fehlend = Legacy: Koordinaten im mitrotierenden Feldraum.
    */
-  coordSpace?: "field" | "viewport";
+  coordSpace?: "field" | "viewport" | "centered";
   updatedAt?: string;
 }
 

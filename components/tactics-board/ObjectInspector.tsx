@@ -210,7 +210,7 @@ export function ObjectInspector({
 
       <div className="grid grid-cols-2 gap-2">
         <label className="flex flex-col gap-1">
-          <span className="text-xs text-slate-400">X</span>
+          <span className="text-xs text-slate-400">X (0 = Mitte)</span>
           <input
             type="text"
             inputMode="decimal"
@@ -236,7 +236,7 @@ export function ObjectInspector({
           />
         </label>
         <label className="flex flex-col gap-1">
-          <span className="text-xs text-slate-400">Y</span>
+          <span className="text-xs text-slate-400">Y (0 = Mitte)</span>
           <input
             type="text"
             inputMode="decimal"

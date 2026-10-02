@@ -39,7 +39,7 @@ const DEFAULT_DOCUMENT: TacticsBoardDocument = {
   keyframes: [createEmptyKeyframe(1)],
   fieldWidth: FIELD_WIDTH,
   fieldHeight: FIELD_HEIGHT,
-  coordSpace: "viewport",
+  coordSpace: "centered",
 };
 
 const LINE_TYPES = new Set(["pass-line", "run-path", "dribble-path", "guide-line"]);
@@ -737,7 +737,7 @@ export function useTacticsBoard(initialDocument?: TacticsBoardDocument) {
   }, [isPlaying]);
 
   const rotateField = useCallback(() => {
-    // Nur Hintergrund drehen — Objekt-X/Y bleiben viewport-starr (Bildschirmachsen).
+    // Nur Hintergrund drehen — Objekt-X/Y bleiben relativ zur Canvas-Mitte.
     setFieldRotation((prev) => nextFieldRotation(prev));
   }, []);
 
@@ -751,7 +751,7 @@ export function useTacticsBoard(initialDocument?: TacticsBoardDocument) {
     recordHistory();
     setDocument((prev) => ({
       ...prev,
-      coordSpace: "viewport",
+      coordSpace: "centered",
       keyframes: [createEmptyKeyframe(1)],
     }));
     setCurrentStepIndex(0);
