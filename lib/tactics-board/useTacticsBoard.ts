@@ -366,7 +366,10 @@ export function useTacticsBoard(initialDocument?: TacticsBoardDocument) {
     [clearStampMemory],
   );
 
-  /** Speichert angepasste Objekt-Eigenschaften als Stempel-Vorlage und aktiviert das Werkzeug. */
+  /**
+   * Speichert angepasste Objekt-Eigenschaften als Stempel-Vorlage (Farbe/Größe/Rotation).
+   * Wechselt bewusst NICHT das Werkzeug — bei Selektion/Panel-Edits bleibt "select" aktiv.
+   */
   const rememberStampFromElement = useCallback((el: BoardElement) => {
     if (LINE_TYPES.has(el.type) || el.points) return;
     stampMemoryRef.current = {
@@ -375,7 +378,6 @@ export function useTacticsBoard(initialDocument?: TacticsBoardDocument) {
       scale: el.scale,
       rotation: el.rotation,
     };
-    setToolMode(el.type);
     if (el.color && (el.type === "cone" || el.type === "dummy")) {
       setConeColorState(el.color);
     }
