@@ -39,7 +39,7 @@ const DEFAULT_DOCUMENT: TacticsBoardDocument = {
   keyframes: [createEmptyKeyframe(1)],
   fieldWidth: FIELD_WIDTH,
   fieldHeight: FIELD_HEIGHT,
-  coordSpace: "centered",
+  coordSpace: "math",
 };
 
 const LINE_TYPES = new Set(["pass-line", "run-path", "dribble-path", "guide-line"]);
@@ -751,7 +751,7 @@ export function useTacticsBoard(initialDocument?: TacticsBoardDocument) {
     recordHistory();
     setDocument((prev) => ({
       ...prev,
-      coordSpace: "centered",
+      coordSpace: "math",
       keyframes: [createEmptyKeyframe(1)],
     }));
     setCurrentStepIndex(0);

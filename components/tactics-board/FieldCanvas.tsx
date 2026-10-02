@@ -7,12 +7,16 @@ import { BoardElementShape } from "./BoardElementShape";
 import type { BoardElement, FieldRotation, FieldView, ToolMode } from "@/lib/tactics-board/types";
 import { DISPLAY_ASPECT_RATIO, FIELD_HEIGHT, FIELD_WIDTH, LETTERBOX_COLOR } from "@/lib/tactics-board/types";
 import {
+  canvasLocalPointToMath,
+  canvasLocalPointsToMath,
   getCoordOrigin,
   getEffectiveRotation,
   getFieldLayout,
   getFieldMarkingArcs,
   getFieldViewport,
   getRotatedViewportSize,
+  mathElementToCanvasLocal,
+  mathPointToCanvasLocal,
   showsFieldLines,
   showsFieldStripes,
 } from "@/lib/tactics-board/fieldLayout";
@@ -309,14 +313,15 @@ export function FieldCanvas({
 
     const pointer = fieldGroupRef.current?.getRelativePointerPosition();
     if (!pointer) return;
-    onFieldClick(pointer.x, pointer.y);
+    const math = canvasLocalPointToMath(pointer.x, pointer.y);
+    onFieldClick(math.x, math.y);
   };
 
   const handleStageMove = () => {
     if (!lineDraft || preview || isPlaying) return;
     const pointer = fieldGroupRef.current?.getRelativePointerPosition();
     if (!pointer) return;
-    setLinePreview(pointer);
+    setLinePreview(canvasLocalPointToMath(pointer.x, pointer.y));
   };
 
   return (
@@ -394,7 +399,7 @@ export function FieldCanvas({
                 </Group>
               </Group>
 
-              {/* Objekte: X/Y relativ zur Canvas-Mitte (0,0 = Anstoß / Feldmitte) */}
+              {/* Objekte: math. X/Y (Y+ nach oben) relativ zur Canvas-Mitte */}
               <Group
                 ref={fieldGroupRef}
                 x={coordOrigin.x}
@@ -410,10 +415,12 @@ export function FieldCanvas({
                     const bZ = b.type === "text-box" ? 1 : 0;
                     return aZ - bZ;
                   })
-                  .map((el) => (
+                  .map((el) => {
+                    const canvasEl = mathElementToCanvasLocal(el);
+                    return (
                   <BoardElementShape
                     key={el.id}
-                    element={el}
+                    element={canvasEl}
                     selected={!preview && el.id === selectedId}
                     draggable={!preview && !isPlaying && toolMode === "select"}
                     labelCounterRotation={0}
@@ -424,28 +431,43 @@ export function FieldCanvas({
                     }}
                     onDragEnd={(x, y) => {
                       onDraggingChange?.(false);
-                      onElementMove(el.id, x, y);
+                      const math = canvasLocalPointToMath(x, y);
+                      onElementMove(el.id, math.x, math.y);
                     }}
                     onLineDragEnd={(dx, dy) => {
                       onDraggingChange?.(false);
-                      onLineMove(el.id, dx, dy);
+                      // Konva-ΔY nach unten → Math-ΔY nach oben
+                      onLineMove(el.id, dx, -dy);
                     }}
                     onLinePointsChange={(points) => {
                       onDraggingChange?.(false);
-                      onLinePointsChange?.(el.id, points);
+                      onLinePointsChange?.(el.id, canvasLocalPointsToMath(points));
                     }}
-                    onTransformEnd={(x, y, rotationDeg) =>
-                      onElementTransform?.(el.id, x, y, rotationDeg)
-                    }
+                    onTransformEnd={(x, y, rotationDeg) => {
+                      const math = canvasLocalPointToMath(x, y);
+                      onElementTransform?.(el.id, math.x, math.y, rotationDeg);
+                    }}
                   />
-                ))}
+                    );
+                  })}
 
-                {lineDraft && (
+                {lineDraft && (() => {
+                  const draftCanvas = mathPointToCanvasLocal(lineDraft.x, lineDraft.y);
+                  const previewCanvas = linePreview
+                    ? mathPointToCanvasLocal(linePreview.x, linePreview.y)
+                    : null;
+                  return (
                   <>
-                    <Circle x={lineDraft.x} y={lineDraft.y} radius={6} fill="#38bdf8" opacity={0.8} />
-                    {linePreview && (
+                    <Circle
+                      x={draftCanvas.x}
+                      y={draftCanvas.y}
+                      radius={6}
+                      fill="#38bdf8"
+                      opacity={0.8}
+                    />
+                    {previewCanvas && (
                       <Line
-                        points={[lineDraft.x, lineDraft.y, linePreview.x, linePreview.y]}
+                        points={[draftCanvas.x, draftCanvas.y, previewCanvas.x, previewCanvas.y]}
                         stroke="#38bdf8"
                         strokeWidth={3}
                         dash={[8, 6]}
@@ -455,7 +477,8 @@ export function FieldCanvas({
                       />
                     )}
                   </>
-                )}
+                  );
+                })()}
               </Group>
             </Group>
           </Layer>

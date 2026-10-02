@@ -74,7 +74,7 @@ export interface BoardData {
   fieldHeight: number;
   fieldView?: FieldView;
   fieldRotation?: FieldRotation;
-  coordSpace?: "field" | "viewport" | "centered";
+  coordSpace?: "field" | "viewport" | "centered" | "math";
 }
 
 export interface TacticExportFile {
@@ -127,7 +127,7 @@ function documentToBoardData(document: TacticsBoardDocument): BoardData {
     fieldHeight: document.fieldHeight,
     fieldView: document.fieldView,
     fieldRotation: document.fieldRotation,
-    coordSpace: document.coordSpace ?? "centered",
+    coordSpace: document.coordSpace ?? "math",
   };
   try {
     const parsed = JSON.parse(JSON.stringify(raw)) as BoardData;
@@ -138,7 +138,7 @@ function documentToBoardData(document: TacticsBoardDocument): BoardData {
       fieldHeight: parsed.fieldHeight,
       ...(parsed.fieldView ? { fieldView: parsed.fieldView } : {}),
       ...(parsed.fieldRotation != null ? { fieldRotation: parsed.fieldRotation } : {}),
-      coordSpace: parsed.coordSpace ?? "centered",
+      coordSpace: parsed.coordSpace ?? "math",
     };
   } catch (error) {
     console.error("[tactics/supabase] board_data JSON-Serialisierung fehlgeschlagen", error);

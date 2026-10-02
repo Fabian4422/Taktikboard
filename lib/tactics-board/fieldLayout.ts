@@ -181,22 +181,56 @@ export function getCoordOrigin(
   return { x: rotated.w / 2, y: rotated.h / 2 };
 }
 
-/** Viewport-Absolut → zentriert (relativ zur Mitte). */
+/**
+ * Viewport-Absolut → mathematisch zentriert (Y+ nach oben).
+ * RelativeY = CenterY - CanvasY
+ */
 export function viewportPointToCentered(
   vx: number,
   vy: number,
   origin: { x: number; y: number },
 ): { x: number; y: number } {
-  return { x: vx - origin.x, y: vy - origin.y };
+  return { x: vx - origin.x, y: origin.y - vy };
 }
 
-/** Zentriert → Viewport-Absolut (für Konva/Export). */
+/**
+ * Mathematisch zentriert → Viewport-Absolut.
+ * CanvasY = CenterY - RelativeY
+ */
 export function centeredPointToViewport(
   rx: number,
   ry: number,
   origin: { x: number; y: number },
 ): { x: number; y: number } {
-  return { x: origin.x + rx, y: origin.y + ry };
+  return { x: origin.x + rx, y: origin.y - ry };
+}
+
+/** Math (Y↑) ↔ Konva-Lokal relativ zur Gruppenmitte (Y↓). */
+export function mathPointToCanvasLocal(x: number, y: number): { x: number; y: number } {
+  return { x, y: -y };
+}
+
+export function canvasLocalPointToMath(x: number, y: number): { x: number; y: number } {
+  return { x, y: -y };
+}
+
+export function mathPointsToCanvasLocal(points: number[]): number[] {
+  return points.map((v, i) => (i % 2 === 0 ? v : -v));
+}
+
+export function canvasLocalPointsToMath(points: number[]): number[] {
+  return points.map((v, i) => (i % 2 === 0 ? v : -v));
+}
+
+/** Element von Math-State → Konva-Darstellung (Y spiegeln). */
+export function mathElementToCanvasLocal<T extends { x: number; y: number; points?: number[] }>(
+  element: T,
+): T {
+  return {
+    ...element,
+    y: -element.y,
+    points: element.points ? mathPointsToCanvasLocal(element.points) : element.points,
+  };
 }
 
 export function viewportElementToCentered<
@@ -205,9 +239,9 @@ export function viewportElementToCentered<
   return {
     ...element,
     x: element.x - origin.x,
-    y: element.y - origin.y,
+    y: origin.y - element.y,
     points: element.points
-      ? element.points.map((v, i) => (i % 2 === 0 ? v - origin.x : v - origin.y))
+      ? element.points.map((v, i) => (i % 2 === 0 ? v - origin.x : origin.y - v))
       : element.points,
   };
 }
@@ -218,10 +252,19 @@ export function centeredElementToViewport<
   return {
     ...element,
     x: origin.x + element.x,
-    y: origin.y + element.y,
+    y: origin.y - element.y,
     points: element.points
-      ? element.points.map((v, i) => (i % 2 === 0 ? origin.x + v : origin.y + v))
+      ? element.points.map((v, i) => (i % 2 === 0 ? origin.x + v : origin.y - v))
       : element.points,
+  };
+}
+
+/** Altes centered (Y↓) → math (Y↑): nur Y-Vorzeichen umkehren. */
+function flipCenteredYToMath<T extends { x: number; y: number; points?: number[] }>(element: T): T {
+  return {
+    ...element,
+    y: -element.y,
+    points: element.points ? mathPointsToCanvasLocal(element.points) : element.points,
   };
 }
 
@@ -316,9 +359,9 @@ export const FIELD_VIEW_LABELS: Record<FieldView, string> = {
 };
 
 /**
- * Migriert Legacy-Koordinaten (Feldraum → Viewport → zentriert)
+ * Migriert Legacy-Koordinaten (Feldraum → Viewport → Mitte → Math-Y↑)
  * und stellt ggf. das FIFA-Feldmaß wieder her.
- * Zielraum: "centered" — (0,0) = Canvas-/Feldmitte.
+ * Zielraum: "math" — (0,0) = Canvas-/Feldmitte, Y+ nach oben.
  */
 export function migrateTacticsDocument(doc: TacticsBoardDocument): TacticsBoardDocument {
   let next: TacticsBoardDocument = { ...doc };
@@ -339,8 +382,20 @@ export function migrateTacticsDocument(doc: TacticsBoardDocument): TacticsBoardD
     next = { ...next, fieldWidth: FIELD_WIDTH, fieldHeight: FIELD_HEIGHT };
   }
 
-  if (next.coordSpace === "centered") {
+  if (next.coordSpace === "math") {
     return next;
+  }
+
+  // Legacy "centered" (Y+ nach unten) → Math (Y+ nach oben)
+  if (next.coordSpace === "centered") {
+    return {
+      ...next,
+      coordSpace: "math",
+      keyframes: next.keyframes.map((kf) => ({
+        ...kf,
+        elements: kf.elements.map((el) => flipCenteredYToMath(el)),
+      })),
+    };
   }
 
   const fieldView = next.fieldView ?? "full";
@@ -369,10 +424,10 @@ export function migrateTacticsDocument(doc: TacticsBoardDocument): TacticsBoardD
     };
   }
 
-  // Viewport-Absolut → zentriert (relativ zur Mitte)
+  // Viewport-Absolut → math (Mitte, Y+ nach oben)
   return {
     ...next,
-    coordSpace: "centered",
+    coordSpace: "math",
     keyframes: next.keyframes.map((kf) => ({
       ...kf,
       elements: kf.elements.map((el) => viewportElementToCentered(el, origin)),

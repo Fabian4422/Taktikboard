@@ -20,6 +20,7 @@ import {
   getFieldMarkingArcs,
   getFieldViewport,
   getRotatedViewportSize,
+  mathElementToCanvasLocal,
   showsFieldLines,
   showsFieldStripes,
 } from "./fieldLayout";
@@ -611,7 +612,7 @@ export function drawExportFrame(
   }
   ctx.restore();
 
-  // 2) Objekte im zentrierten Koordinatenraum (0,0 = Canvas-/Feldmitte)
+  // 2) Objekte: Math-Koordinaten (Y+ oben) → Canvas-Lokal (Y↓) umrechnen
   ctx.save();
   ctx.beginPath();
   ctx.rect(0, 0, rotated.w, rotated.h);
@@ -623,10 +624,11 @@ export function drawExportFrame(
     const bZ = b.type === "text-box" ? 1 : 0;
     return aZ - bZ;
   })) {
-    if (el.points && el.points.length >= 4) {
-      drawLineElement(ctx, el);
+    const canvasEl = mathElementToCanvasLocal(el);
+    if (canvasEl.points && canvasEl.points.length >= 4) {
+      drawLineElement(ctx, canvasEl);
     } else {
-      drawMarkerElement(ctx, el, 0);
+      drawMarkerElement(ctx, canvasEl, 0);
     }
   }
   ctx.restore();
